@@ -1,0 +1,8 @@
+{
+  "id": "ex_0640_Miniband_Knee_Hover_Quadruped_Fire_Hydrant",
+  "text": "```json\n{\n  \"title\": \"Miniband Knee Hover en Quadrupède - Fire Hydrant\",\n  \"category\": \"exercice\",\n  \"type\": \"renforcement\",\n  \"level\": \"confirmé\",\n  \"text\": \"Cet exercice, qui se pratique en position quadrupède avec une miniband, cible principalement les muscles des fessiers. Il s'agit d'un mouvement d'isolation qui sollicite le bas du corps.\",\n  \"metadata\": {\n    \"source\": \"C:\\\\Dossier Walid\\\\RAG_train\\\\database_unified\\\\exercises\\\\0640_Miniband_Knee_Hover_Quadruped_Fire_Hydrant.json\",\n    \"original_language\": \"en\"\n  }\n}\n```",
+  "title": "0640_Miniband_Knee_Hover_Quadruped_Fire_Hydrant",
+  "category": "conseil",
+  "type": "autre",
+  "level": "mixte"
+}

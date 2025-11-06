@@ -1,0 +1,13 @@
+{
+  "id": "ex_exo_ultralong_90_velo_20_course",
+  "text": "Cette séance d'endurance extrême consiste en 90 minutes de vélo suivies de 20 minutes de course. Vous pouvez augmenter la durée de vélo de 10 minutes ou celle de la course de 5 minutes selon votre niveau. L'intensité de l'exercice est modérée.",
+  "title": "Séance ultra-longue : 90 minutes de vélo et 20 minutes de course",
+  "category": "exercice",
+  "type": "endurance",
+  "level": "intermédiaire",
+  "tags": [
+    "intermediaire",
+    "modérée",
+    "systèmes énergétiques"
+  ]
+}

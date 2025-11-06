@@ -2,16 +2,21 @@ import json
 from pathlib import Path
 from typing import Iterable
 import uuid
+from urllib.parse import urlparse
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
 from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 # Collection and model configuration
-COLLECTION_NAME = "coach_mike"
+COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "coach_mike")
 VECTOR_SIZE = 768  # default embedding size for all-mpnet-base-v2
-MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+MODEL_NAME = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2")
 
 def load_jsonl(path: str) -> Iterable[dict]:
     """Yield JSON objects from a JSONL file."""
@@ -29,13 +34,20 @@ def upsert_batch(client: QdrantClient, collection: str, points: list):
         client.upsert(collection_name=collection, points=points)
 
 def main(
-    host: str = "localhost",
-    port: int = 6333,
+    host: str = None,
+    port: int = None,
     exercises_path: str = "data/processed/exercises.jsonl",
     micro_path: str = "data/processed/microcycles.jsonl",
     meso_path: str = "data/processed/mesocycles.jsonl",
     batch_size: int = 100,
 ):
+    # Parse QDRANT_URL if provided, otherwise use host/port defaults
+    qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
+    if host is None or port is None:
+        parsed = urlparse(qdrant_url)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 6333
+    
     client = QdrantClient(host=host, port=port)
 
     # Create or recreate collection

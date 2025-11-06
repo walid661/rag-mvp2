@@ -1,0 +1,8 @@
+{
+  "id": "ex_weekly_plan_generator",
+  "text": "Ce générateur permet de créer des programmes d'entraînement hebdomadaires adaptés au profil de l'utilisateur, en tenant compte des objectifs à long terme et des priorités à court terme. Il prend en considération l'équipement disponible, les contraintes de temps, ainsi que les éventuelles limitations de santé. Les séances peuvent inclure divers formats d'entraînement tels que des circuits, des AMRAP (As Many Rounds As Possible), des EMOM (Every Minute On the Minute), et des exercices au poids du corps, avec des options pour utiliser des haltères, des bandes de résistance, ou des machines. Les programmes peuvent également intégrer des techniques avancées et des variations de tempo, de volume et de densité.",
+  "title": "Générateur de programmes d'entraînement hebdomadaires",
+  "category": "programme",
+  "type": "autre",
+  "level": "mixte"
+}

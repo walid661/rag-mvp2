@@ -1,0 +1,14 @@
+{
+  "id": "ex_exo_circuits_cardio_muscu_debutant",
+  "text": "Ce circuit de cardio et de musculation est conçu pour les débutants. Il se compose de 3 tours de 6 exercices, chacun durant 30 secondes. L'intensité est faible et il combine des mouvements globaux avec un cardio léger, idéal pour un entraînement doux.",
+  "title": "Circuit Cardio-Musculation Débutant",
+  "category": "exercice",
+  "type": "cardio",
+  "level": "débutant",
+  "tags": [
+    "brûlage métabolique",
+    "cardio",
+    "débutant",
+    "faible"
+  ]
+}

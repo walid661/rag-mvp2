@@ -1,10 +1,15 @@
 from typing import List, Dict
 import openai
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # Charge automatiquement les variables d'environnement
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 class RAGGenerator:
     """Generate answers given a query and retrieved documents."""
 
-    def __init__(self, model: str = "gpt-4-turbo-preview"):
+    def __init__(self, model: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")):
         self.model = model
         # Reserve room for the output; adjust according to model context window.
         self.max_context_tokens = 6000

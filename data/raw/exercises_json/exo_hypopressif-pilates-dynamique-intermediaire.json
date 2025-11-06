@@ -1,0 +1,13 @@
+{
+  "id": "ex_exo_hypopressif_pilates_dynamique_intermediaire",
+  "text": "```json\n{\n  \"title\": \"Renforcement profond et contrôle moteur\",\n  \"category\": \"exercice\",\n  \"type\": \"renforcement\",\n  \"level\": \"intermédiaire\",\n  \"text\": \"Cet exercice intermédiaire combine des techniques d'hypopressif et de Pilates dynamique. Il met l'accent sur la coordination entre la respiration et la posture, tout en renforçant en profondeur et en améliorant le contrôle moteur. Le programme inclut des mouvements tels que le roll up, le deadbug Pilates et la planche dynamique, suivi d'un flow au sol de 20 minutes. L'intensité est faible à modérée, favorisant la fluidité et l'amplitude des mouvements.\",\n  \"metadata\": {\n    \"source\": \"C:\\\\Dossier Walid\\\\RAG_train\\\\database_unified\\\\exercises\\\\exo_hypopressif-pilates-dynamique-intermediaire.json\",\n    \"original_language\": \"fr\"\n  }\n}\n```",
+  "title": "exo_hypopressif-pilates-dynamique-intermediaire",
+  "category": "conseil",
+  "type": "autre",
+  "level": "mixte",
+  "tags": [
+    "faible",
+    "intermédiaire",
+    "renforcement et tonification"
+  ]
+}

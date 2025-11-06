@@ -1,0 +1,8 @@
+{
+  "id": "ex_1668_Tire_Lateral_Jump_Through",
+  "text": "```json\n{\n  \"title\": \"Saut latéral à travers un pneu\",\n  \"category\": \"exercice\",\n  \"type\": \"renforcement\",\n  \"level\": \"intermédiaire\",\n  \"text\": \"Le saut latéral à travers un pneu est un exercice de renforcement qui cible principalement les quadriceps. Il s'agit d'un mouvement pliométrique qui sollicite le bas du corps et nécessite un pneu comme équipement. Cet exercice est conçu pour améliorer la puissance et l'explosivité.\",\n  \"metadata\": {\n    \"source\": \"C:\\\\Dossier Walid\\\\RAG_train\\\\database_unified\\\\exercises\\\\1668_Tire_Lateral_Jump_Through.json\",\n    \"original_language\": \"en\"\n  }\n}\n```",
+  "title": "1668_Tire_Lateral_Jump_Through",
+  "category": "conseil",
+  "type": "autre",
+  "level": "mixte"
+}

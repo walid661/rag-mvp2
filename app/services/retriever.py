@@ -3,11 +3,15 @@ import numpy as np
 from qdrant_client import QdrantClient
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 class HybridRetriever:
     """Combine dense vector search with BM25 and optional cross-encoder reranking."""
 
-    def __init__(self, qdrant_client: QdrantClient, collection_name: str, embedding_model: str = "sentence-transformers/all-mpnet-base-v2"):
+    def __init__(self, qdrant_client: QdrantClient, collection_name: str, embedding_model: str = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2")):
         self.qdrant = qdrant_client
         self.collection_name = collection_name
         self.model = SentenceTransformer(embedding_model)

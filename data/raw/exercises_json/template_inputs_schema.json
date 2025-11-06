@@ -1,0 +1,8 @@
+{
+  "id": "ex_template_inputs_schema",
+  "text": "Ce document présente les critères à considérer pour valider les informations fournies par les utilisateurs. Il inclut des éléments tels que le niveau sportif, l'objectif principal, le matériel disponible, le nombre de séances par semaine, la durée moyenne par séance, ainsi que les pathologies connues et les limitations physiques actuelles. D'autres aspects à prendre en compte comprennent les exercices refusés ou interdits, l'ambiance recherchée, les jours et moments préférés pour s'entraîner, le style de communication préféré, la relation avec le coach, le rythme global souhaité, l'intensité de l'objectif, la motivation actuelle, la sensibilité émotionnelle, les troubles psychologiques connus, les préférences sociales et l'acceptation des variations.",
+  "title": "Validation des entrées utilisateur",
+  "category": "conseil",
+  "type": "autre",
+  "level": "mixte"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "ex_exo_circuit_outdoor_long",
+  "text": "Ce circuit extérieur long est conçu pour travailler votre endurance de manière ludique. Il consiste en 3 tours de 6 séries de 60 secondes chacune, avec la possibilité d'ajouter un tour supplémentaire. L'intensité de cet exercice est faible, ce qui le rend accessible aux personnes ayant un niveau intermédiaire.",
+  "title": "Circuit extérieur long",
+  "category": "exercice",
+  "type": "endurance",
+  "level": "intermédiaire",
+  "tags": [
+    "faible",
+    "intermediaire",
+    "systèmes énergétiques"
+  ]
+}

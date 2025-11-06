@@ -2,11 +2,15 @@ from typing import List, Dict
 import uuid
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 class DocumentIndexer:
     """Create a Qdrant collection and index documents with embeddings."""
 
-    def __init__(self, qdrant_url: str = "http://localhost:6333", collection_name: str = "coach_mike"):
+    def __init__(self, qdrant_url: str = os.getenv("QDRANT_URL", "http://localhost:6333"), collection_name: str = os.getenv("QDRANT_COLLECTION", "coach_mike")):
         self.client = QdrantClient(url=qdrant_url)
         self.collection_name = collection_name
 
