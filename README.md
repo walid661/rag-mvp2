@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 2. **Prepare raw data**: Copy your 3,333 exercise JSON files into `data/raw/exercises_json/`. Copy your PDF documents into `data/raw/pdfs/`.
 
-3. **Run Phase I – Data cleaning & chunking**:
+3. **Run Phase I – Data cleaning & chunking**:
 
 ```bash
 python scripts/clean_exercises.py
@@ -33,7 +33,7 @@ These scripts generate the normalized JSONL files in `data/processed/`:
 - `exercises.jsonl` – One exercise per line with canonicalised metadata.
 - `microcycles.jsonl` and `mesocycles.jsonl` – Semantic chunks extracted from the PDFs.
 
-4. **Run Phase II – Ingestion into Qdrant**:
+4. **Run Phase II – Ingestion into Qdrant**:
 
 Ensure Qdrant is running locally (default port 6333) or adjust the host/port. Then:
 
@@ -49,6 +49,6 @@ The retrieval, generation and monitoring services are implemented in `app/servic
 
 ## Notes
 
-- Only the core functionality from CodeOrbit’s “100 K documents” architecture is implemented here: semantic chunking, hybrid retrieval with RRF fusion, optional cross‑encoder reranking, and basic monitoring.
+- Only the core functionality from CodeOrbit's "100 K documents" architecture is implemented here: semantic chunking, hybrid retrieval with RRF fusion, optional cross‑encoder reranking, and basic monitoring.
 - Features such as quantization and semantic caching are omitted because they are unnecessary for a dataset of this size.
 - Modify the system prompt in `app/services/generator.py` to suit your domain.
