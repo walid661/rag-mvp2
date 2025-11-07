@@ -109,8 +109,16 @@ class HybridRetriever:
         reranker = self._get_reranker()
         if not reranker:
             return candidates
-        texts = [self._get_document(doc_id) for doc_id, _ in candidates]
-        pairs = [[query, text] for text in texts]
+        # Prefetch en batch pour éviter N requêtes
+        ids = [doc_id for doc_id, _ in candidates]
+        recs = self.qdrant.retrieve(self.collection_name, ids)
+        payload_by_id = {r.id: r for r in recs}
+        texts = []
+        for doc_id in ids:
+            r = payload_by_id.get(doc_id)
+            txt = r.payload.get("text", "") if r else ""
+            texts.append(txt)
+        pairs = [[query, t] for t in texts]
         scores = reranker.predict(pairs)
         final_scores = [(doc_id, 0.7 * ce_score + 0.3 * fusion_score)
                         for (doc_id, fusion_score), ce_score in zip(candidates, scores)]
@@ -171,13 +179,19 @@ class HybridRetriever:
         else:
             reranked = candidates[:top_k]
         
+        # Batch retrieve pour limiter à 1 appel réseau
+        ids = [doc_id for doc_id, _ in reranked]
+        recs = self.qdrant.retrieve(self.collection_name, ids)
+        payload_by_id = {r.id: r for r in recs}
         docs: List[Dict] = []
         for doc_id, score in reranked:
-            doc = self.qdrant.retrieve(self.collection_name, [doc_id])[0]
+            r = payload_by_id.get(doc_id)
+            if not r:
+                continue
             docs.append({
                 "id": doc_id,
-                "text": doc.payload.get("text", ""),
+                "text": r.payload.get("text", ""),
                 "score": score,
-                "payload": doc.payload,
+                "payload": r.payload,
             })
         return docs

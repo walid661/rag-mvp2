@@ -12,8 +12,8 @@ class RAGGenerator:
     def __init__(self, model: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")):
         self.model = model
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        # Reserve room for the output; adjust according to model context window.
-        self.max_context_tokens = 6000
+        # Budget de contexte ajustable via ENV (défaut 1800)
+        self.max_context_tokens = int(os.getenv("MAX_CONTEXT_TOKENS", "1800"))
 
     def _pack_context(self, docs: List[Dict], max_tokens: int) -> List[Dict]:
         """Pack the highest scoring documents until the token budget is filled."""
@@ -44,11 +44,13 @@ Question: {query}
 Provide a concise, actionable answer and list relevant exercises/programs. Cite your sources."""
 
     def _get_system_prompt(self) -> str:
-        return """You are a fitness coaching assistant. Your task is to provide exercise and training program advice based only on supplied documents. Follow these rules:
-1. Never make assumptions or use external knowledge.
-2. Cite sources in the form (Document N) after each factual claim.
-3. Use clear, professional language.
-"""
+        return """You are a fitness coaching assistant. Provide advice based only on supplied documents.
+Rules:
+1) Never use external knowledge; only the provided context.
+2) After each factual claim, cite as (Document N).
+3) Use clear, professional language.
+4) Avoid repeating identical attributes across bullets. Group similar items and deduplicate phrasing.
+5) When listing exercises, organize by target area or equipment (e.g., glutes/quads/hamstrings; bodyweight/dumbbells). Provide concise sets/reps/rest guidance if present in context; otherwise keep it brief."""
 
     def generate(self, query: str, retrieved_docs: List[Dict]) -> Dict:
         context = self._pack_context(retrieved_docs, self.max_context_tokens)
