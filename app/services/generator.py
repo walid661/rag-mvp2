@@ -3,6 +3,7 @@ from openai import OpenAI
 import re
 from dotenv import load_dotenv
 import os
+import tiktoken
 
 load_dotenv()  # Charge automatiquement les variables d'environnement
 
@@ -12,16 +13,20 @@ class RAGGenerator:
     def __init__(self, model: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")):
         self.model = model
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        # Budget de contexte ajustable via ENV (défaut 1800)
+        # Budget de contexte et plafond de docs (ENV)
         self.max_context_tokens = int(os.getenv("MAX_CONTEXT_TOKENS", "1800"))
+        self.max_docs = int(os.getenv("MAX_DOCS", "8"))
+        # Encodage token pour un comptage précis
+        self._enc = tiktoken.get_encoding("cl100k_base")
 
     def _pack_context(self, docs: List[Dict], max_tokens: int) -> List[Dict]:
         """Pack the highest scoring documents until the token budget is filled."""
         sorted_docs = sorted(docs, key=lambda x: x['score'], reverse=True)
         packed: List[Dict] = []
         token_count = 0
-        for doc in sorted_docs:
-            doc_tokens = len(doc['text'].split()) * 1.3  # rough token estimate
+        for doc in sorted_docs[:self.max_docs]:
+            # Comptage exact des tokens pour contrôler le budget
+            doc_tokens = len(self._enc.encode(doc['text']))
             if token_count + doc_tokens > max_tokens:
                 break
             packed.append(doc)

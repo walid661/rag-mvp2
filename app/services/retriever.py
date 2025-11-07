@@ -4,7 +4,7 @@ import os
 import pickle
 from pathlib import Path
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue
+from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, SearchParams
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from dotenv import load_dotenv
@@ -24,7 +24,8 @@ class HybridRetriever:
         self.collection_name = collection_name
         self.model = SentenceTransformer(embedding_model)
         self.bm25 = None
-        self.doc_cache: Dict[str, str] = {}
+        self.doc_cache: Dict[str, str] = {}        # id -> text
+        self.payload_cache: Dict[str, Dict] = {}   # id -> payload minimal (filtres)
         self._reranker = None
 
     def _get_reranker(self):
@@ -40,12 +41,13 @@ class HybridRetriever:
             with open(BM25_STATE_PATH, "rb") as f:
                 state = pickle.load(f)
                 self.doc_cache = state.get("doc_cache", {})
+                self.payload_cache = state.get("payload_cache", {})
                 self.bm25 = state.get("bm25")
                 return
         # Build and persist
         self.bm25 = BM25Okapi(docs_as_tokens)
         with open(BM25_STATE_PATH, "wb") as f:
-            pickle.dump({"doc_cache": self.doc_cache, "bm25": self.bm25}, f)
+            pickle.dump({"doc_cache": self.doc_cache, "payload_cache": self.payload_cache, "bm25": self.bm25}, f)
 
     def build_bm25_index(self, documents: List[Dict]) -> None:
         """Build a BM25 index from the provided documents (list of Qdrant points)."""
@@ -56,14 +58,22 @@ class HybridRetriever:
                 # Record object
                 text = doc.payload.get("text", "")
                 doc_id = doc.id
+                payload = dict(doc.payload or {})
             else:
                 # Dict object
                 text = doc.get("payload", {}).get("text", "")
                 doc_id = doc.get("id")
+                payload = dict((doc.get("payload") or {}))
             
             if text:
                 corpus.append(text)
                 self.doc_cache[doc_id] = text
+                # Conserver un sous-ensemble de clés utiles au filtrage
+                if payload:
+                    self.payload_cache[doc_id] = {
+                        k: payload.get(k) for k in ("type", "equipment", "domain", "source", "page")
+                        if k in payload
+                    }
         
         docs_as_tokens = [text.split() for text in corpus]
         self._load_or_build_bm25(docs_as_tokens)
@@ -143,31 +153,29 @@ class HybridRetriever:
             collection_name=self.collection_name,
             query_vector=query_vector,
             query_filter=qdrant_filter,
-            limit=top_k * 2
+            limit=top_k * 2,
+            search_params=SearchParams(hnsw_ef=int(os.getenv("HNSW_EF", "128")))
         )
         
         # Sparse BM25 results (post-filter if needed)
         sparse_results = self._bm25_search(query, top_k * 2)
         if filters:
-            # Filter BM25 results by payload
+            # Filter BM25 results via payload_cache (0 requête Qdrant)
             filtered_sparse = []
             for doc_id, score in sparse_results:
-                try:
-                    doc = self.qdrant.retrieve(self.collection_name, [doc_id])[0]
-                    matches = True
-                    for key, val in filters.items():
-                        if isinstance(val, list):
-                            if doc.payload.get(key) not in val:
-                                matches = False
-                                break
-                        else:
-                            if doc.payload.get(key) != val:
-                                matches = False
-                                break
-                    if matches:
-                        filtered_sparse.append((doc_id, score))
-                except:
-                    continue
+                p = self.payload_cache.get(doc_id, {})
+                ok = True
+                for key, val in filters.items():
+                    if isinstance(val, list):
+                        if p.get(key) not in val:
+                            ok = False
+                            break
+                    else:
+                        if p.get(key) != val:
+                            ok = False
+                            break
+                if ok:
+                    filtered_sparse.append((doc_id, score))
             sparse_results = filtered_sparse[:top_k * 2]
         
         # Fuse
