@@ -1,7 +1,11 @@
 from typing import List, Dict
 import uuid
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, OptimizersConfigDiff, ScalarQuantization, ScalarQuantizationConfig
+from qdrant_client.models import (
+    Distance, VectorParams, PointStruct,
+    OptimizersConfigDiff, HnswConfigDiff,
+    ScalarQuantization, ScalarQuantizationConfig
+)
 from dotenv import load_dotenv
 import os
 
@@ -10,7 +14,7 @@ load_dotenv()
 class DocumentIndexer:
     """Create a Qdrant collection and index documents with embeddings."""
 
-    def __init__(self, qdrant_url: str = os.getenv("QDRANT_URL", "http://localhost:6333"), collection_name: str = os.getenv("QDRANT_COLLECTION", "coach_mike")):
+    def __init__(self, qdrant_url: str = os.getenv("QDRANT_URL", "http://localhost:6335"), collection_name: str = os.getenv("QDRANT_COLLECTION", "coach_mike")):
         self.client = QdrantClient(url=qdrant_url)
         self.collection_name = collection_name
 
@@ -23,13 +27,24 @@ class DocumentIndexer:
                 distance=Distance.COSINE,
                 on_disk=True
             ),
-            optimizers_config=OptimizersConfigDiff(indexing_threshold=20000),
+            optimizers_config=OptimizersConfigDiff(
+                indexing_threshold=int(os.getenv("INDEXING_THRESHOLD", "1000"))
+            ),
             quantization_config=ScalarQuantization(
                 scalar=ScalarQuantizationConfig(
                     type="int8",
                     quantile=0.99,
                     always_ram=True
                 )
+            )
+        )
+
+        # Réduire le full_scan_threshold et éventuellement limiter les threads d'indexation
+        self.client.update_collection(
+            collection_name=self.collection_name,
+            hnsw_config=HnswConfigDiff(
+                full_scan_threshold=int(os.getenv("FULL_SCAN_THRESHOLD", "500")),
+                max_indexing_threads=int(os.getenv("MAX_INDEXING_THREADS", "0"))
             )
         )
 
