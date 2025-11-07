@@ -5,7 +5,11 @@ import uuid
 from urllib.parse import urlparse
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, OptimizersConfigDiff, ScalarQuantization, ScalarQuantizationConfig
+from qdrant_client.models import (
+    Distance, VectorParams, PointStruct,
+    OptimizersConfigDiff, HnswConfigDiff,
+    ScalarQuantization, ScalarQuantizationConfig
+)
 
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
@@ -42,11 +46,11 @@ def main(
     batch_size: int = 100,
 ):
     # Parse QDRANT_URL if provided, otherwise use host/port defaults
-    qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
+    qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6335")
     if host is None or port is None:
         parsed = urlparse(qdrant_url)
         host = parsed.hostname or "localhost"
-        port = parsed.port or 6333
+        port = parsed.port or 6335
     
     client = QdrantClient(host=host, port=port)
 
@@ -63,13 +67,24 @@ def main(
             distance=Distance.COSINE,
             on_disk=True
         ),
-        optimizers_config=OptimizersConfigDiff(indexing_threshold=20000),
+        optimizers_config=OptimizersConfigDiff(
+            indexing_threshold=int(os.getenv("INDEXING_THRESHOLD", "1000"))
+        ),
         quantization_config=ScalarQuantization(
             scalar=ScalarQuantizationConfig(
                 type="int8",
                 quantile=0.99,
                 always_ram=True
             )
+        )
+    )
+
+    # Réduire le full_scan_threshold et éventuellement limiter les threads d'indexation
+    client.update_collection(
+        collection_name=COLLECTION_NAME,
+        hnsw_config=HnswConfigDiff(
+            full_scan_threshold=int(os.getenv("FULL_SCAN_THRESHOLD", "500")),
+            max_indexing_threads=int(os.getenv("MAX_INDEXING_THREADS", "0"))
         )
     )
     print(f"Collection '{COLLECTION_NAME}' creee avec succes !")
