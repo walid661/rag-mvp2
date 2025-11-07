@@ -51,25 +51,28 @@ def main(
     client = QdrantClient(host=host, port=port)
 
     # Create or recreate collection
-    try:
-        client.get_collection(COLLECTION_NAME)
-    except Exception:
-        client.recreate_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(
-                size=VECTOR_SIZE,
-                distance=Distance.COSINE,
-                on_disk=True
-            ),
-            optimizers_config=OptimizersConfigDiff(indexing_threshold=20000),
-            quantization_config=ScalarQuantization(
-                scalar=ScalarQuantizationConfig(
-                    type="int8",
-                    quantile=0.99,
-                    always_ram=True
-                )
+    if client.collection_exists(COLLECTION_NAME):
+        print(f"Suppression de la collection existante '{COLLECTION_NAME}'...")
+        client.delete_collection(COLLECTION_NAME)
+    
+    print(f"Creation de la collection '{COLLECTION_NAME}'...")
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(
+            size=VECTOR_SIZE,
+            distance=Distance.COSINE,
+            on_disk=True
+        ),
+        optimizers_config=OptimizersConfigDiff(indexing_threshold=20000),
+        quantization_config=ScalarQuantization(
+            scalar=ScalarQuantizationConfig(
+                type="int8",
+                quantile=0.99,
+                always_ram=True
             )
         )
+    )
+    print(f"Collection '{COLLECTION_NAME}' creee avec succes !")
 
     # Load embedding model
     model = get_embedding_model()
