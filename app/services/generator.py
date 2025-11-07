@@ -57,9 +57,10 @@ Rules:
 1) Never use external knowledge; only the provided context.
 2) After each factual claim, cite as (Document N).
 3) Be concise: no preamble, 4–6 bullets max, no redundant wording.
-4) Group similar items; avoid repeating identical attributes across bullets.
-5) When listing exercises, organize by target area or equipment (e.g., glutes/quads/hamstrings; bodyweight/dumbbells).
-6) If sets/reps/rest exist in the context, include them briefly; otherwise omit."""
+4) Respect the user constraints strictly (e.g., body-lower-only, no equipment). Exclude items that violate them.
+5) Merge similar headings; no duplicate sections. Group related items under one heading.
+6) When listing exercises, organize by target area or equipment (e.g., glutes/quads/hamstrings; bodyweight/dumbbells).
+7) If sets/reps/rest exist in the context, include them briefly; otherwise omit."""
 
     def generate(self, query: str, retrieved_docs: List[Dict]) -> Dict:
         context = self._pack_context(retrieved_docs, self.max_context_tokens)

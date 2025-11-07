@@ -200,6 +200,21 @@ class HybridRetriever:
         fused = self._reciprocal_rank_fusion(dense_results, sparse_results, k=RRF_K)
         candidates = fused[:max(top_k * 2, 20)]
         
+        # Préférence douce : "sans matériel" -> léger bonus aux docs bodyweight
+        ql = (query or "").lower()
+        if ("sans materiel" in ql) or ("sans matériel" in ql) or ("poids du corps" in ql) or ("bodyweight" in ql):
+            bonus = float(os.getenv("EQUIPMENT_PREFERENCE_BONUS", "0.01"))
+            preferred_vals = {"bodyweight", "aucun", "", "none", "no_equipment"}
+            boosted = []
+            for doc_id, score in candidates:
+                p = self.payload_cache.get(doc_id, {})
+                eq = str(p.get("equipment", "")).strip().lower()
+                if eq in preferred_vals:
+                    score += bonus
+                boosted.append((doc_id, score))
+            # Reste trié par score décroissant
+            candidates = sorted(boosted, key=lambda x: x[1], reverse=True)
+        
         if use_rerank and candidates:
             reranked = self._cross_encode_rerank(query, candidates)[:top_k]
         else:
