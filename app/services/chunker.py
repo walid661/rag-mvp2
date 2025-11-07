@@ -1,5 +1,6 @@
 from typing import List, Dict
 import tiktoken
+import re
 
 class SemanticChunker:
     """Chunk documents using semantic boundaries where possible."""
@@ -23,8 +24,46 @@ class SemanticChunker:
         return chunks
 
     def _detect_sections(self, text: str) -> List[str]:
-        """Detect high-level sections. This placeholder splits on blank lines."""
-        return [section.strip() for section in text.split("\n\n") if section.strip()]
+        """
+        Heuristiques de découpe orientées documents :
+        - Titres (niveaux Markdown, lignes MAJUSCULES, numérotation 1., 1.1., etc.)
+        - Sections connues du domaine (Exemples, Consignes, Erreurs fréquentes, Variantes, Matériel)
+        - Listes à puces / numérotées
+        Retour: liste de paragraphes (strings) prêts pour le token-splitting
+        """
+        lines = [ln.strip() for ln in text.splitlines()]
+        blocks, buf = [], []
+
+        title_re = re.compile(r'^(#{1,6}\s+.+|[A-Z0-9][A-Z0-9 \-/]{6,}|(?:\d+\.)+\s+.+)$')
+        domain_re = re.compile(r'^(exemples?|consignes?|erreurs? fréquentes?|variantes?|matériel|equipement|équipement)\s*:?\s*$', re.I)
+        bullet_re = re.compile(r'^(\-|\*|\d+\)|\d+\.)\s+')
+
+        def flush():
+            if buf:
+                blocks.append("\n".join(buf).strip())
+                buf.clear()
+
+        for ln in lines:
+            if not ln:
+                flush()
+                continue
+
+            # Hard boundary on titles or section headers
+            if title_re.match(ln) or domain_re.match(ln):
+                flush()
+                blocks.append(ln)
+                continue
+
+            # Keep list items grouped but allow paragraph boundaries on blank lines
+            if bullet_re.match(ln):
+                buf.append(ln)
+                continue
+
+            buf.append(ln)
+
+        flush()
+        # Filtrer les vides
+        return [b for b in blocks if b and len(b) > 1]
 
     def _is_atomic_section(self, section: str) -> bool:
         """Heuristically decide whether a section is small enough to keep intact."""

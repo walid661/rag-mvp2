@@ -5,7 +5,7 @@ import uuid
 from urllib.parse import urlparse
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct, OptimizersConfigDiff, ScalarQuantization, ScalarQuantizationConfig
 
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
@@ -58,7 +58,16 @@ def main(
             collection_name=COLLECTION_NAME,
             vectors_config=VectorParams(
                 size=VECTOR_SIZE,
-                distance=Distance.COSINE
+                distance=Distance.COSINE,
+                on_disk=True
+            ),
+            optimizers_config=OptimizersConfigDiff(indexing_threshold=20000),
+            quantization_config=ScalarQuantization(
+                scalar=ScalarQuantizationConfig(
+                    type="int8",
+                    quantile=0.99,
+                    always_ram=True
+                )
             )
         )
 
@@ -69,8 +78,63 @@ def main(
         for record in load_jsonl(path):
             emb = model.encode(record["text"]).tolist()
             pid = uuid.uuid4().hex
-            payload = {**record["meta"], "domain": domain}
-            payload["text"] = record["text"]  # store raw text for BM25
+            
+            # Normalisation du payload avant upsert
+            meta = record.get("meta") or record.get("metadata") or {}
+            
+            payload = {
+                # Texte principal (clé canonique attendue côté retrieval/BM25)
+                "text": (
+                    record.get("text")
+                    or meta.get("text")
+                    or record.get("content")
+                ),
+                
+                # Provenance du document (chemin fichier, URL, titre…)
+                "source": (
+                    record.get("source")
+                    or meta.get("source")
+                    or "json"
+                ),
+                
+                # Page, si applicable (PDF)
+                "page": (
+                    record.get("page")
+                    or meta.get("page")
+                ),
+                
+                # Typologie fonctionnelle (exercise, micro, meso, taxonomy…)
+                "type": (
+                    record.get("type")
+                    or meta.get("type")
+                    or record.get("domain")
+                    or domain
+                    or "exercise"
+                ),
+                
+                # Horodatage utile pour l'audit/tri
+                "timestamp": (
+                    record.get("updated_at")
+                    or record.get("created_at")
+                    or meta.get("updated_at")
+                    or meta.get("created_at")
+                    or meta.get("timestamp")
+                ),
+                
+                # Fusion intégrale des métadonnées existantes
+                **meta,
+            }
+            
+            # Optionnel : préserver des identifiants s'ils existent déjà dans le record
+            if record.get("doc_id"):
+                payload["doc_id"] = record["doc_id"]
+            if record.get("chunk_id"):
+                payload["chunk_id"] = record["chunk_id"]
+            
+            # Ajouter domain si pas déjà présent
+            if "domain" not in payload:
+                payload["domain"] = domain
+            
             yield PointStruct(
                 id=pid,
                 vector=emb,

@@ -1,12 +1,20 @@
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import numpy as np
-from qdrant_client import QdrantClient
-from rank_bm25 import BM25Okapi
-from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
 import os
+import pickle
+from pathlib import Path
+from qdrant_client import QdrantClient
+from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue
+from rank_bm25 import BM25Okapi
+from sentence_transformers import SentenceTransformer, CrossEncoder
+from dotenv import load_dotenv
 
 load_dotenv()
+
+RRF_K = int(os.getenv("RRF_K", "60"))
+ENABLE_RERANK = os.getenv("ENABLE_RERANK", "false").lower() == "true"
+RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+BM25_STATE_PATH = "data/processed/bm25.pkl"
 
 class HybridRetriever:
     """Combine dense vector search with BM25 and optional cross-encoder reranking."""
@@ -17,13 +25,35 @@ class HybridRetriever:
         self.model = SentenceTransformer(embedding_model)
         self.bm25 = None
         self.doc_cache: Dict[str, str] = {}
+        self._reranker = None
+
+    def _get_reranker(self):
+        """Lazy load reranker if enabled."""
+        if ENABLE_RERANK and self._reranker is None:
+            self._reranker = CrossEncoder(RERANK_MODEL)
+        return self._reranker
+
+    def _load_or_build_bm25(self, docs_as_tokens: List[List[str]]):
+        """Load BM25 from pickle if exists, otherwise build and save."""
+        Path(BM25_STATE_PATH).parent.mkdir(parents=True, exist_ok=True)
+        if os.path.exists(BM25_STATE_PATH):
+            with open(BM25_STATE_PATH, "rb") as f:
+                state = pickle.load(f)
+                self.doc_cache = state.get("doc_cache", {})
+                self.bm25 = state.get("bm25")
+                return
+        # Build and persist
+        self.bm25 = BM25Okapi(docs_as_tokens)
+        with open(BM25_STATE_PATH, "wb") as f:
+            pickle.dump({"doc_cache": self.doc_cache, "bm25": self.bm25}, f)
 
     def build_bm25_index(self, documents: List[Dict]) -> None:
         """Build a BM25 index from the provided documents (list of Qdrant points)."""
         corpus = [doc["payload"]["text"] for doc in documents]
-        self.bm25 = BM25Okapi([text.split() for text in corpus])
+        docs_as_tokens = [text.split() for text in corpus]
         for doc in documents:
             self.doc_cache[doc["id"]] = doc["payload"]["text"]
+        self._load_or_build_bm25(docs_as_tokens)
 
     def _embed(self, query: str) -> List[float]:
         return self.model.encode(query).tolist()
@@ -40,7 +70,19 @@ class HybridRetriever:
             results.append((doc_id, scores[idx]))
         return results
 
-    def _reciprocal_rank_fusion(self, dense, sparse: List[Tuple[str, float]], k: int = 60) -> List[Tuple[str, float]]:
+    def _build_filter(self, filters: Optional[Dict]) -> Optional[Filter]:
+        """Build Qdrant filter from dict."""
+        if not filters:
+            return None
+        must = []
+        for key, val in filters.items():
+            if isinstance(val, list):
+                must.append(FieldCondition(key=key, match=MatchAny(any=val)))
+            else:
+                must.append(FieldCondition(key=key, match=MatchValue(value=val)))
+        return Filter(must=must) if must else None
+
+    def _reciprocal_rank_fusion(self, dense, sparse: List[Tuple[str, float]], k: int = RRF_K) -> List[Tuple[str, float]]:
         scores: Dict[str, float] = {}
         for rank, result in enumerate(dense, 1):
             doc_id = result.id
@@ -51,11 +93,12 @@ class HybridRetriever:
         return ranked
 
     def _cross_encode_rerank(self, query: str, candidates: List[Tuple[str, float]]) -> List[Tuple[str, float]]:
-        from sentence_transformers import CrossEncoder
-        model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+        reranker = self._get_reranker()
+        if not reranker:
+            return candidates
         texts = [self._get_document(doc_id) for doc_id, _ in candidates]
         pairs = [[query, text] for text in texts]
-        scores = model.predict(pairs)
+        scores = reranker.predict(pairs)
         final_scores = [(doc_id, 0.7 * ce_score + 0.3 * fusion_score)
                         for (doc_id, fusion_score), ce_score in zip(candidates, scores)]
         return sorted(final_scores, key=lambda x: x[1], reverse=True)
@@ -66,24 +109,55 @@ class HybridRetriever:
         result = self.qdrant.retrieve(self.collection_name, [doc_id])
         return result[0].payload.get("text", "")
 
-    def retrieve(self, query: str, top_k: int = 10, use_rerank: bool = False) -> List[Dict]:
+    def retrieve(self, query: str, top_k: int = 10, filters: Optional[Dict] = None, use_rerank: bool = None) -> List[Dict]:
         """Retrieve top documents for the query using hybrid search."""
+        if use_rerank is None:
+            use_rerank = ENABLE_RERANK
+        
+        qdrant_filter = self._build_filter(filters)
+        
         # Dense vector search
         query_vector = self._embed(query)
         dense_results = self.qdrant.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
+            query_filter=qdrant_filter,
             limit=top_k * 2
         )
-        # Sparse BM25 results
+        
+        # Sparse BM25 results (post-filter if needed)
         sparse_results = self._bm25_search(query, top_k * 2)
+        if filters:
+            # Filter BM25 results by payload
+            filtered_sparse = []
+            for doc_id, score in sparse_results:
+                try:
+                    doc = self.qdrant.retrieve(self.collection_name, [doc_id])[0]
+                    matches = True
+                    for key, val in filters.items():
+                        if isinstance(val, list):
+                            if doc.payload.get(key) not in val:
+                                matches = False
+                                break
+                        else:
+                            if doc.payload.get(key) != val:
+                                matches = False
+                                break
+                    if matches:
+                        filtered_sparse.append((doc_id, score))
+                except:
+                    continue
+            sparse_results = filtered_sparse[:top_k * 2]
+        
         # Fuse
-        fused = self._reciprocal_rank_fusion(dense_results, sparse_results, k=60)
+        fused = self._reciprocal_rank_fusion(dense_results, sparse_results, k=RRF_K)
         candidates = fused[:max(top_k * 2, 20)]
+        
         if use_rerank and candidates:
             reranked = self._cross_encode_rerank(query, candidates)[:top_k]
         else:
             reranked = candidates[:top_k]
+        
         docs: List[Dict] = []
         for doc_id, score in reranked:
             doc = self.qdrant.retrieve(self.collection_name, [doc_id])[0]

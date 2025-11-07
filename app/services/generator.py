@@ -1,5 +1,6 @@
 from typing import List, Dict
 import openai
+import re
 from dotenv import load_dotenv
 import os
 
@@ -62,7 +63,24 @@ Provide a concise, actionable answer and list relevant exercises/programs. Cite 
             max_tokens=800
         )
         answer_text = response.choices[0].message.content
+        
+        # Extraire les références "(Document N)" et mapper vers le contexte
+        doc_ref_re = re.compile(r"\(Document\s+(\d+)\)")
+        refs = set(int(m.group(1)) for m in doc_ref_re.finditer(answer_text))
+        sources = []
+        for i in refs:
+            if 1 <= i <= len(context):
+                c = context[i-1]
+                sources.append({
+                    "index": i,
+                    "id": c.get("id") or c.get("doc_id") or c.get("chunk_id"),
+                    "source": (c.get("payload", {}).get("source") or c.get("source")),
+                    "page": (c.get("payload", {}).get("page") or c.get("page")),
+                    "type": (c.get("payload", {}).get("type") or c.get("payload", {}).get("domain") or c.get("type")),
+                })
+        
         return {
             "answer": answer_text,
+            "sources": sources,
             "context_used": context
         }
