@@ -78,6 +78,7 @@ Provide a concise, actionable answer and list relevant exercises/programs. Cite 
                     "source": (c.get("payload", {}).get("source") or c.get("source")),
                     "page": (c.get("payload", {}).get("page") or c.get("page")),
                     "type": (c.get("payload", {}).get("type") or c.get("payload", {}).get("domain") or c.get("type")),
+                    "score": c.get("score", 0.0),
                 })
         
         return {
