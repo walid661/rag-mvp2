@@ -34,6 +34,24 @@ class HybridRetriever:
             self._reranker = CrossEncoder(RERANK_MODEL)
         return self._reranker
 
+    def load_bm25_state_if_any(self) -> bool:
+        """
+        Charge BM25/doc_cache/payload_cache depuis le pickle s'il existe.
+        Retourne True si chargé, False sinon.
+        """
+        try:
+            if os.path.exists(BM25_STATE_PATH):
+                with open(BM25_STATE_PATH, "rb") as f:
+                    state = pickle.load(f)
+                self.doc_cache = state.get("doc_cache", {})
+                self.payload_cache = state.get("payload_cache", {})
+                self.bm25 = state.get("bm25")
+                return True
+        except Exception:
+            # En cas de corruption, on laissera le caller reconstruire.
+            pass
+        return False
+
     def _load_or_build_bm25(self, docs_as_tokens: List[List[str]]):
         """Load BM25 from pickle if exists, otherwise build and save."""
         Path(BM25_STATE_PATH).parent.mkdir(parents=True, exist_ok=True)
