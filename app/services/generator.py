@@ -17,8 +17,8 @@ class RAGGenerator:
         self.max_context_tokens = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
         self.max_docs = int(os.getenv("MAX_DOCS", "5"))
         # Contrôle fin de la génération
-        self.max_output_tokens = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "300"))
-        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
+        self.max_output_tokens = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "220"))
+        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.1"))
         # Encodage token pour un comptage précis
         self._enc = tiktoken.get_encoding("cl100k_base")
 
@@ -56,8 +56,8 @@ Provide a concise, actionable answer and list relevant exercises/programs. Cite 
 Rules:
 1) Never use external knowledge; only the provided context.
 2) After each factual claim, cite as (Document N).
-3) Be concise: no preamble, 4–6 bullets max, no redundant wording.
-4) Respect the user constraints strictly (e.g., body-lower-only, no equipment). Exclude items that violate them.
+3) Be concise: no preamble or titles; start directly with bullets. 4–6 bullets max, no redundant wording.
+4) Respect user constraints ONLY if they are explicitly present. Never assume 'no equipment' unless the user states it. If the user specifies equipment (e.g., dumbbells), include such items.
 5) Merge similar headings; no duplicate sections. Group related items under one heading.
 6) When listing exercises, organize by target area or equipment (e.g., glutes/quads/hamstrings; bodyweight/dumbbells).
 7) If sets/reps/rest exist in the context, include them briefly; otherwise omit."""
