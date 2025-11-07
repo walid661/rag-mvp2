@@ -49,10 +49,23 @@ class HybridRetriever:
 
     def build_bm25_index(self, documents: List[Dict]) -> None:
         """Build a BM25 index from the provided documents (list of Qdrant points)."""
-        corpus = [doc["payload"]["text"] for doc in documents]
-        docs_as_tokens = [text.split() for text in corpus]
+        corpus = []
         for doc in documents:
-            self.doc_cache[doc["id"]] = doc["payload"]["text"]
+            # Handle both dict and Record objects
+            if hasattr(doc, 'payload'):
+                # Record object
+                text = doc.payload.get("text", "")
+                doc_id = doc.id
+            else:
+                # Dict object
+                text = doc.get("payload", {}).get("text", "")
+                doc_id = doc.get("id")
+            
+            if text:
+                corpus.append(text)
+                self.doc_cache[doc_id] = text
+        
+        docs_as_tokens = [text.split() for text in corpus]
         self._load_or_build_bm25(docs_as_tokens)
 
     def _embed(self, query: str) -> List[float]:

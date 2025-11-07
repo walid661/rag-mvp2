@@ -1,17 +1,17 @@
 from typing import List, Dict
-import openai
+from openai import OpenAI
 import re
 from dotenv import load_dotenv
 import os
 
 load_dotenv()  # Charge automatiquement les variables d'environnement
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
 class RAGGenerator:
     """Generate answers given a query and retrieved documents."""
 
     def __init__(self, model: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")):
         self.model = model
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         # Reserve room for the output; adjust according to model context window.
         self.max_context_tokens = 6000
 
@@ -53,7 +53,8 @@ Provide a concise, actionable answer and list relevant exercises/programs. Cite 
     def generate(self, query: str, retrieved_docs: List[Dict]) -> Dict:
         context = self._pack_context(retrieved_docs, self.max_context_tokens)
         prompt = self._build_prompt(query, context)
-        response = openai.ChatCompletion.create(
+        
+        response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": self._get_system_prompt()},
