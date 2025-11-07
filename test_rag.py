@@ -69,6 +69,8 @@ query = "Je veux un programme pour renforcer le bas du corps sans materiel"
 base_filters = {}
 inferred = infer_filters_from_query(query)
 for k, v in inferred.items():
+    if k == "equipment":
+        continue  # on n'injecte pas 'equipment' pour éviter 0 résultat
     base_filters.setdefault(k, v)
 
 t0 = time.time()
@@ -107,6 +109,8 @@ query2 = "exercices pour quadriceps avec halteres"
 base_filters2 = {"type": "exercise"}
 inferred2 = infer_filters_from_query(query2)
 for k, v in inferred2.items():
+    if k == "equipment":
+        continue  # on n'injecte pas 'equipment' pour éviter 0 résultat
     base_filters2.setdefault(k, v)
 
 t0_2 = time.time()
