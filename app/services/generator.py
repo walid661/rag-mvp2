@@ -13,9 +13,12 @@ class RAGGenerator:
     def __init__(self, model: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")):
         self.model = model
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        # Budget de contexte et plafond de docs (ENV)
-        self.max_context_tokens = int(os.getenv("MAX_CONTEXT_TOKENS", "1800"))
-        self.max_docs = int(os.getenv("MAX_DOCS", "8"))
+        # Budget de contexte et plafond de docs (ENV) — valeurs plus frugales par défaut
+        self.max_context_tokens = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
+        self.max_docs = int(os.getenv("MAX_DOCS", "5"))
+        # Contrôle fin de la génération
+        self.max_output_tokens = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "300"))
+        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
         # Encodage token pour un comptage précis
         self._enc = tiktoken.get_encoding("cl100k_base")
 
@@ -49,13 +52,14 @@ Question: {query}
 Provide a concise, actionable answer and list relevant exercises/programs. Cite your sources."""
 
     def _get_system_prompt(self) -> str:
-        return """You are a fitness coaching assistant. Provide advice based only on supplied documents.
+        return """You are a fitness coaching assistant. Answer ONLY from the provided documents.
 Rules:
 1) Never use external knowledge; only the provided context.
 2) After each factual claim, cite as (Document N).
-3) Use clear, professional language.
-4) Avoid repeating identical attributes across bullets. Group similar items and deduplicate phrasing.
-5) When listing exercises, organize by target area or equipment (e.g., glutes/quads/hamstrings; bodyweight/dumbbells). Provide concise sets/reps/rest guidance if present in context; otherwise keep it brief."""
+3) Be concise: no preamble, 4–6 bullets max, no redundant wording.
+4) Group similar items; avoid repeating identical attributes across bullets.
+5) When listing exercises, organize by target area or equipment (e.g., glutes/quads/hamstrings; bodyweight/dumbbells).
+6) If sets/reps/rest exist in the context, include them briefly; otherwise omit."""
 
     def generate(self, query: str, retrieved_docs: List[Dict]) -> Dict:
         context = self._pack_context(retrieved_docs, self.max_context_tokens)
@@ -67,8 +71,8 @@ Rules:
                 {"role": "system", "content": self._get_system_prompt()},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.1,
-            max_tokens=800
+            temperature=self.temperature,
+            max_tokens=self.max_output_tokens
         )
         answer_text = response.choices[0].message.content
         
