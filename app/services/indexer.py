@@ -20,7 +20,13 @@ class DocumentIndexer:
 
     def create_collection(self, vector_size: int = 768) -> None:
         """Recreate the collection with given vector size and cosine distance."""
-        self.client.recreate_collection(
+        # Supprimer la collection existante si elle existe
+        if self.client.collection_exists(self.collection_name):
+            print(f"Suppression de la collection existante '{self.collection_name}'...")
+            self.client.delete_collection(self.collection_name)
+        
+        print(f"Creation de la collection '{self.collection_name}'...")
+        self.client.create_collection(
             collection_name=self.collection_name,
             vectors_config=VectorParams(
                 size=vector_size,
@@ -47,6 +53,7 @@ class DocumentIndexer:
                 max_indexing_threads=int(os.getenv("MAX_INDEXING_THREADS", "0"))
             )
         )
+        print(f"Collection '{self.collection_name}' creee avec succes !")
 
     def index_documents(self, documents: List[Dict], batch_size: int = 100) -> None:
         """Insert documents into the collection in batches."""
