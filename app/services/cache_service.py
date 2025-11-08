@@ -61,3 +61,6 @@ class SemanticCache:
         self.r.rpush("sc:keys", key)
         self.r.ltrim("sc:keys", -SEMANTIC_CACHE_MAX, -1)
 
+
+
+
