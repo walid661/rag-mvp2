@@ -130,7 +130,13 @@ def parse_txt(txt_path:Path, debug=False):
         return c
 
     def is_mc_start(l:str): return re.match(r"^MC\d+(?:\.\d+)?\b", l) is not None
-    def is_rubrique(l:str): return any(l.startswith(r) for r in RUBRIQUES)
+    def is_rubrique(l:str): 
+        # Détecte les rubriques qui commencent par un numéro (ex: "1. Reconditionnement général")
+        # ou directement par le nom de la rubrique
+        for r in RUBRIQUES:
+            if l.startswith(r) or re.match(rf"^\d+\.\s*{re.escape(r)}", l):
+                return True
+        return False
     def is_niveau(l:str): return any(l.strip().startswith(n) for n in NIV_MARKERS)
 
     for l in lines:
@@ -140,7 +146,18 @@ def parse_txt(txt_path:Path, debug=False):
         if is_rubrique(l):
             j = flush()
             if j: candidates.append(j)
-            groupe = l.split("–")[0].strip()
+            # Extrait le nom de la rubrique (enlève le numéro si présent)
+            for r in RUBRIQUES:
+                if l.startswith(r):
+                    groupe = r
+                    break
+                elif re.match(rf"^\d+\.\s*{re.escape(r)}", l):
+                    groupe = r
+                    break
+            if not groupe:
+                groupe = l.split("–")[0].strip()
+                # Enlève le numéro au début si présent
+                groupe = re.sub(r"^\d+\.\s*", "", groupe).strip()
             continue
         if is_niveau(l):
             j = flush()
