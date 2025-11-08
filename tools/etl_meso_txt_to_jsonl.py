@@ -62,7 +62,7 @@ MC_PATTERNS = [
         r"RY\s*\(\s*(?P<RY>[^)]*?)\s*\)\s*[–—-]\s*"
         r"(?P<neuro>.+?)\s*[–—-]\s*"
         r"(?P<energy>.+?)\s*[–—-]\s*"
-        r"(?P<intention>.+?)\s*$"
+        r"(?P<intention>.+?)\s*(?:_{2,}.*)?\s*$"
     ),
     re.compile(
         r"^(MC(?P<id>\d+(?:\.\d+)?))\s*[–—-]\s*"
@@ -75,7 +75,7 @@ MC_PATTERNS = [
         r"RY\s*\(\s*(?P<RY>[^)]*?)\s*\)\s*(?:[–—-]\s*)?"
         r"(?P<neuro>.+?)\s*[–—-]\s*"
         r"(?P<energy>.+?)\s*[–—-]\s*"
-        r"(?P<intention>.+?)\s*$"
+        r"(?P<intention>.+?)\s*(?:_{2,}.*)?\s*$"
     ),
 ]
 
@@ -86,6 +86,29 @@ def collapse_block(lines:list[str])->str:
     joined = re.sub(r"\s*;\s*","; ", joined)
     joined = re.sub(r"\s+"," ", joined)
     return joined.strip()
+
+def _preclean_candidate(cand: str) -> str:
+    s = cand
+    # 0) Unicode & espaces
+    s = unicodedata.normalize("NFKC", s or "")
+    s = re.sub(r"\s+", " ", s).strip()
+
+    # 1) Corrige "I(I(" imbriqué
+    s = re.sub(r"I\s*\(\s*I\s*\(", "I(", s)
+
+    # 2) Coupe tout ce qui suit un long séparateur d'underscores
+    #    ex: "... ) – ... – intention. ________________ 2. Tonification ..."
+    s = re.sub(r"\s*_{6,}.*$", "", s)
+
+    # 3) Coupe tout suffixe fléché (ex: " – > progression ...", " -> ...")
+    s = re.sub(r"\s*(?:[–—-]\s*)?>\s*.*$", "", s)
+
+    # 4) Harmonise ponctuation
+    s = s.replace(" ;", ";")
+    s = re.sub(r";\s*;", "; ", s)          # double point-virgule
+    s = re.sub(r"\s*[–—-]\s*", " – ", s)   # unifie les tirets en " – "
+    s = re.sub(r"\s+"," ", s).strip()
+    return s
 
 def parse_txt(txt_path:Path, debug=False):
     raw = txt_path.read_text(encoding="utf-8", errors="ignore")
@@ -111,6 +134,9 @@ def parse_txt(txt_path:Path, debug=False):
     def is_niveau(l:str): return any(l.strip().startswith(n) for n in NIV_MARKERS)
 
     for l in lines:
+        # Ignore lignes "____" isolées
+        if re.fullmatch(r"_+", l):
+            continue
         if is_rubrique(l):
             j = flush()
             if j: candidates.append(j)
@@ -132,6 +158,8 @@ def parse_txt(txt_path:Path, debug=False):
     if j: candidates.append(j)
 
     for cand in candidates:
+        # Pré-nettoyage du candidat
+        cand = _preclean_candidate(cand)
         mobj = None
         for pat in MC_PATTERNS:
             mobj = pat.match(cand)

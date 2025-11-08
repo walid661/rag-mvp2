@@ -46,7 +46,7 @@ MC1.11 – Coordination avancée : enchaînements multi – plans – Circuit d�
 
 ---
 
-MC1.12 – Pré – renforcement structuré : circuits poids du corps + élastiques – routine de remise en charge progressive – I(élastique léger à moyen, 20 – 30%); T(40 – 50’’); S(3 – 4); RE(10 – 15); RY(moderato à soutenu) – fibres mixtes, symétrie musculaire, amplitude partielle à complète – mixte – Initier un stress musculaire contrôlé; progression par charge croissante et volume. ________________ 2. Tonification et Renforcement 🟨
+MC1.12 – Pré – renforcement structuré : circuits poids du corps + élastiques – routine de remise en charge progressive – I(élastique léger à moyen, 20 – 30%); T(40 – 50’’); S(3 – 4); RE(10 – 15); RY(moderato à soutenu) – fibres mixtes, symétrie musculaire, amplitude partielle à complète – mixte – Initier un stress musculaire contrôlé; progression par charge croissante et volume. 2. Tonification et Renforcement 🟨
 
 ---
 
@@ -62,7 +62,7 @@ MC2.3 – Mobilité sous tension : amplitude fonctionnelle – mobilité sous r�
 
 ---
 
-MC2.4 – Routine structurée mixte : split haut/bas – split alterné haut/bas – I(70 %); T(90 – 105’’); S(4); RE(15); RY(soutenu modéré) – fibres mixtes, symétrie bilatérale, coordination haut/bas – mixte – Améliorer la coordination musculaire globale; progression par répartition fonctionnelle. ________________
+MC2.4 – Routine structurée mixte : split haut/bas – split alterné haut/bas – I(70 %); T(90 – 105’’); S(4); RE(15); RY(soutenu modéré) – fibres mixtes, symétrie bilatérale, coordination haut/bas – mixte – Améliorer la coordination musculaire globale; progression par répartition fonctionnelle.
 
 ---
 
@@ -78,7 +78,7 @@ MC2.7 – Mobilité sous tension : amplitude fonctionnelle – mobilité sous r�
 
 ---
 
-MC2.8 – Routine structurée mixte : split haut/bas – split alterné haut bas – I(75 %); T(1’30’’ – 1’45’’); S(4); RE(15); RY(soutenu) – fibres mixtes, coordination intersegmentaire, équilibre musculaire – mixte – Construire une routine équilibrée; progression par volume et agencement. ________________
+MC2.8 – Routine structurée mixte : split haut/bas – split alterné haut bas – I(75 %); T(1’30’’ – 1’45’’); S(4); RE(15); RY(soutenu) – fibres mixtes, coordination intersegmentaire, équilibre musculaire – mixte – Construire une routine équilibrée; progression par volume et agencement.
 
 ---
 
@@ -94,7 +94,7 @@ MC2.11 – Mobilité avec résistance : exercices en amplitude maximale – cont
 
 ---
 
-MC2.12 – Circuit complet intensif : 4 à 5 séries longues – Circuit complet intensif : effort global et métabolique – I(effort élevé ≈ 8 – 9/10 RPE); T(30 – 40’’); S(4 – 5); RE(15 – 20); RY(soutenu++) – fibres mixtes, travail global, coordination complète – anaérobie lactique – Renforcer le corps sous contrainte métabolique; progression par densité et volume. ________________ 3. Hypertrophie structurelle 🟥
+MC2.12 – Circuit complet intensif : 4 à 5 séries longues – Circuit complet intensif : effort global et métabolique – I(effort élevé ≈ 8 – 9/10 RPE); T(30 – 40’’); S(4 – 5); RE(15 – 20); RY(soutenu++) – fibres mixtes, travail global, coordination complète – anaérobie lactique – Renforcer le corps sous contrainte métabolique; progression par densité et volume. 3. Hypertrophie structurelle 🟥
 
 ---
 
@@ -110,7 +110,7 @@ MC3.3 – Volume maîtrisé : circuits hypertrophie classiques – Classique –
 
 ---
 
-MC3.4 – Focus zones clés : split haut/bas simple – Classique – I(75% (suite à un nouveau test max); T(1’45”); S(4); RE(12); RY(lent 3/3) – fibres IIa, focus zones spécifiques, amplitude complète – mixte – Renforcer certaines zones musculaires; progression via isolation progressive et volume ciblé. ________________
+MC3.4 – Focus zones clés : split haut/bas simple – Classique – I(75% (suite à un nouveau test max); T(1’45”); S(4); RE(12); RY(lent 3/3) – fibres IIa, focus zones spécifiques, amplitude complète – mixte – Renforcer certaines zones musculaires; progression via isolation progressive et volume ciblé.
 
 ---
 
@@ -126,7 +126,7 @@ MC3.7 – Spécialisation ciblée : focus 1 – 2 groupes / séance – Bi – s
 
 ---
 
-MC3.8 – Correction unilatérale : exercices isolés droite/gauche – Unilatérale structurée – I(65 – 75%); T(1”30’’); S(4); RE(12); RY(lent 3/3) – fibres IIa, symétrie gauche/droite, coordination unilatérale – mixte – Harmoniser les volumes musculaires; progression via latéralisation et contrôle postural. ________________
+MC3.8 – Correction unilatérale : exercices isolés droite/gauche – Unilatérale structurée – I(65 – 75%); T(1”30’’); S(4); RE(12); RY(lent 3/3) – fibres IIa, symétrie gauche/droite, coordination unilatérale – mixte – Harmoniser les volumes musculaires; progression via latéralisation et contrôle postural.
 
 ---
 
@@ -142,7 +142,7 @@ MC3.11 – Tempo adaptatif : transition lente/explosif – Tempo training évolu
 
 ---
 
-MC3.12 – Volume & fatigue contrôlée : tolérance à l’effort – Dead set / Bi – set volumique – I(70 – 75%); T(1’15’’ à 1’30’’); S(4); RE(8 → 12 selon méthode); RY(2/2 stable ou avec pauses partielles) – fibres IIa, fatigue métabolique progressive, tolérance musculaire locale, amplitude complète – anaérobie lactique – Travailler la capacité à accumuler de la fatigue en conservant une exécution correcte. Alternance possible entre séries continues en bi – set et descentes de charge en dead set; progression via volume cumulé et réduction des temps de repos. ________________ 4. Mobilité 🟩
+MC3.12 – Volume & fatigue contrôlée : tolérance à l’effort – Dead set / Bi – set volumique – I(70 – 75%); T(1’15’’ à 1’30’’); S(4); RE(8 → 12 selon méthode); RY(2/2 stable ou avec pauses partielles) – fibres IIa, fatigue métabolique progressive, tolérance musculaire locale, amplitude complète – anaérobie lactique – Travailler la capacité à accumuler de la fatigue en conservant une exécution correcte. Alternance possible entre séries continues en bi – set et descentes de charge en dead set; progression via volume cumulé et réduction des temps de repos. 4. Mobilité 🟩
 
 ---
 
@@ -190,7 +190,7 @@ MC4.11 – Gainage profond & respiration : vacuum, apnée active – stabilité 
 
 ---
 
-MC4.12 – Auto – libération myofasciale : foam roller / balles – auto – libération myofasciale – I(NA); T(30’’); S(1 – 2); RE(6 – 8 zones clés); RY(pression lente avec glissement ciblé) – relâchement tissulaire profond, amplitude passive, zones posturales – aérobie – Restaurer les tissus mous; progression par rigidité de l’outil et temps de pression sur zones denses. ________________ 5. Perte de masse grasse 🟧
+MC4.12 – Auto – libération myofasciale : foam roller / balles – auto – libération myofasciale – I(NA); T(30’’); S(1 – 2); RE(6 – 8 zones clés); RY(pression lente avec glissement ciblé) – relâchement tissulaire profond, amplitude passive, zones posturales – aérobie – Restaurer les tissus mous; progression par rigidité de l’outil et temps de pression sur zones denses. 5. Perte de masse grasse 🟧
 
 ---
 
@@ -206,7 +206,7 @@ MC5.3 – Intensification progressive : endurance intermittent – circuits frac
 
 ---
 
-MC5.4 – Stabilisation : routine mixte – routine métabolique hebdomadaire – I(45 – 60%); T(30 – 45’’); S(3); RE(6 – 8 exercices dynamiques à rotation hebdomadaire); RY(variable selon jours) – symétrie globale, mix zones haut/bas, rythme variable – mixte – Installer une base durable; progression via régularité et ajustement des formats. ________________
+MC5.4 – Stabilisation : routine mixte – routine métabolique hebdomadaire – I(45 – 60%); T(30 – 45’’); S(3); RE(6 – 8 exercices dynamiques à rotation hebdomadaire); RY(variable selon jours) – symétrie globale, mix zones haut/bas, rythme variable – mixte – Installer une base durable; progression via régularité et ajustement des formats.
 
 ---
 
@@ -222,7 +222,7 @@ MC5.7 – Résistance métabolique : métabolique avec charge – metcon renfo (
 
 ---
 
-MC5.8 – Séchage contrôlé : cardio + tonification – tonification + cardio combiné – I(65 – 75%); T(40 – 50’’); S(3 – 4); RE(6 – 8); RY(variable selon groupe cible) – fibres IIa, alternance zones, contraction continue – anaérobie lactique – Raffiner la silhouette; progression par combinaison effort ciblé + récupération partielle. ________________ Avancé
+MC5.8 – Séchage contrôlé : cardio + tonification – tonification + cardio combiné – I(65 – 75%); T(40 – 50’’); S(3 – 4); RE(6 – 8); RY(variable selon groupe cible) – fibres IIa, alternance zones, contraction continue – anaérobie lactique – Raffiner la silhouette; progression par combinaison effort ciblé + récupération partielle. Avancé
 
 ---
 
@@ -238,7 +238,7 @@ MC5.11 – Définition musculaire contrastée : métabolique mix tempo – méth
 
 ---
 
-MC5.12 – Esthétique finale : affûtage terminal – entraînements courts intenses (affûtage final) – I(65 – 80%); T(20 – 30’’); S(3 – 4); RE(6 – 8); RY(variation rapide – minimal rest) – fibres IIa, densité maximale, récupération minimale – anaérobie lactique – Finaliser la définition physique; progression par vitesse, fréquence et compression des temps. ________________ 6. Endurance & capacité cardio 🟪
+MC5.12 – Esthétique finale : affûtage terminal – entraînements courts intenses (affûtage final) – I(65 – 80%); T(20 – 30’’); S(3 – 4); RE(6 – 8); RY(variation rapide – minimal rest) – fibres IIa, densité maximale, récupération minimale – anaérobie lactique – Finaliser la définition physique; progression par vitesse, fréquence et compression des temps. 6. Endurance & capacité cardio 🟪
 
 ---
 
@@ -254,7 +254,7 @@ MC6.3 – Tempo linéaire : effort stable (zone 2) – tempo continu contrôlé 
 
 ---
 
-MC6.4 – Cardio + coordination : souffle et contrôle moteur – cardio – coordination légère (circuits low impact) – I(55 – 65% FCmax estimée); T(30/30); S(2); RE(6 – 8); RY(rythme régulier avec coordination) – coordination intersegmentaire, équilibre dynamique, fibres lentes – aérobie – Activer le corps sans surcharge; progression par précision gestuelle et fluidité continue. ________________
+MC6.4 – Cardio + coordination : souffle et contrôle moteur – cardio – coordination légère (circuits low impact) – I(55 – 65% FCmax estimée); T(30/30); S(2); RE(6 – 8); RY(rythme régulier avec coordination) – coordination intersegmentaire, équilibre dynamique, fibres lentes – aérobie – Activer le corps sans surcharge; progression par précision gestuelle et fluidité continue.
 
 ---
 
@@ -270,7 +270,7 @@ MC6.7 – Fartlek progressif : variation libre guidée – fartlek structuré �
 
 ---
 
-MC6.8 – Endurance fonctionnelle : effort utilitaire – endurance fonctionnelle – I(65 – 80% FCmax estimée); T(40 – 60’’); S(3 – 4); RE(10 – 12); RY(fluidité + transitions dynamiques) – coordination multi – plans, endurance musculaire, posture active – aérobie – Renforcer l’endurance utile au quotidien; progression via formats variés et applicabilité. ________________
+MC6.8 – Endurance fonctionnelle : effort utilitaire – endurance fonctionnelle – I(65 – 80% FCmax estimée); T(40 – 60’’); S(3 – 4); RE(10 – 12); RY(fluidité + transitions dynamiques) – coordination multi – plans, endurance musculaire, posture active – aérobie – Renforcer l’endurance utile au quotidien; progression via formats variés et applicabilité.
 
 ---
 
@@ -286,7 +286,7 @@ MC6.11 – Cardio + force combiné : double stimulation – metcon cardio/renfo 
 
 ---
 
-MC6.12 – Résistance mentale : effort long avec engagement – EMOM long + focus cognitif léger – I(70 – 85% FCmax estimée); T(1’ effort / 30’’ récup); S(2 – 3); RE(3 – 5); RY(endurance mentale avec maintien) – fibres IIa, coordination mentale/musculaire, tolérance prolongée – anaérobie lactique – Développer la résilience mentale et la tolérance à l’inconfort par des efforts répétés exigeant de la concentration et du maintien de la posture; progression via l’enchaînement d’exercices sans relâche mentale. ________________ 7. Performance & intensification 🟫
+MC6.12 – Résistance mentale : effort long avec engagement – EMOM long + focus cognitif léger – I(70 – 85% FCmax estimée); T(1’ effort / 30’’ récup); S(2 – 3); RE(3 – 5); RY(endurance mentale avec maintien) – fibres IIa, coordination mentale/musculaire, tolérance prolongée – anaérobie lactique – Développer la résilience mentale et la tolérance à l’inconfort par des efforts répétés exigeant de la concentration et du maintien de la posture; progression via l’enchaînement d’exercices sans relâche mentale. 7. Performance & intensification 🟫
 
 ---
 
@@ -334,7 +334,7 @@ MC7.11 – Complexes dynamiques : polyarticulaires combinés, chaîne musculaire
 
 ---
 
-MC7.12 – Simulation d’effort extrême : format compétition – simulation compétition / WOD structuré – I(75 – 90%); T(EMOM / AMRAP 10 – 15’); S(1 – 2); RE(N/A); RY(engagement prolongé continu total) – fibres mixtes, intensité prolongée, exigence complète – mixte – Repousser les limites physiques et mentales; progression via format, volume et effort cumulé. ________________ 8. Santé & longévité active ⬜
+MC7.12 – Simulation d’effort extrême : format compétition – simulation compétition / WOD structuré – I(75 – 90%); T(EMOM / AMRAP 10 – 15’); S(1 – 2); RE(N/A); RY(engagement prolongé continu total) – fibres mixtes, intensité prolongée, exigence complète – mixte – Repousser les limites physiques et mentales; progression via format, volume et effort cumulé. 8. Santé & longévité active ⬜
 
 ---
 
@@ -382,7 +382,7 @@ MC8.11 – Endurance stable : effort long et modéré – cardio continu léger 
 
 ---
 
-MC8.12 – Stimulation complète : coordination, renfo, souffle – stimulation complète combinée – I(50 – 65%); T(30 – 60’’); S(2 – 3); RE(8 – 10); RY(enchaînements progressifs) – fibres mixtes, multi – stimulation douce, équilibre dynamique – mixte – Prévenir les effets du vieillissement; progression par complexité motrice intégrée et prévention des effets liés à l’âge (sarcopénie, blessures, raideurs) ________________ 9. Préparation mentale & récupération ⬛
+MC8.12 – Stimulation complète : coordination, renfo, souffle – stimulation complète combinée – I(50 – 65%); T(30 – 60’’); S(2 – 3); RE(8 – 10); RY(enchaînements progressifs) – fibres mixtes, multi – stimulation douce, équilibre dynamique – mixte – Prévenir les effets du vieillissement; progression par complexité motrice intégrée et prévention des effets liés à l’âge (sarcopénie, blessures, raideurs) 9. Préparation mentale & récupération ⬛
 
 ---
 
@@ -414,7 +414,7 @@ MC9.7 – Séance guidée lente : fluidité – séance guidée lente – I(N/A)
 
 ---
 
-MC9.8 – Relaxation active : mouvements au sol – contracté / relâché passif – I(20 – 30%); T(20 – 30’’); S(2 – 3); RE(6 – 8); RY(souffle – relâchement synchrone, type Jacobson) – amplitude douce, fibres lentes, contrôle postural au sol – aérobie – Libérer les tensions profondes; progression par synchronisation souffle/relâchement. ________________
+MC9.8 – Relaxation active : mouvements au sol – contracté / relâché passif – I(20 – 30%); T(20 – 30’’); S(2 – 3); RE(6 – 8); RY(souffle – relâchement synchrone, type Jacobson) – amplitude douce, fibres lentes, contrôle postural au sol – aérobie – Libérer les tensions profondes; progression par synchronisation souffle/relâchement.
 
 ---
 
@@ -430,7 +430,7 @@ MC9.11 – Routine anti – surcharge : programme hebdo – récupération syst�
 
 ---
 
-MC9.12 – Régénération holistique : combinaison sommeil / respiration / récupération – I(N/A); T(15 – 20’); S(1); RE(N/A); RY(enchaînement fluide, relâchement type Jacobson) – régulation globale, amplitude douce, respiration guidée – aérobie – Restaurer l’équilibre intérieur; progression par cohérence entre séquences. ________________ 10. Préparation à un objectif 🩵
+MC9.12 – Régénération holistique : combinaison sommeil / respiration / récupération – I(N/A); T(15 – 20’); S(1); RE(N/A); RY(enchaînement fluide, relâchement type Jacobson) – régulation globale, amplitude douce, respiration guidée – aérobie – Restaurer l’équilibre intérieur; progression par cohérence entre séquences. 10. Préparation à un objectif 🩵
 
 ---
 
@@ -478,7 +478,7 @@ MC10.11 – Micro – charges spécifiques : formats très ciblés – travail e
 
 ---
 
-MC10.12 – Tapering : baisse volume / maintien intensité – tapering structuré – I(70 – 85%); T(30 – 45’’); S(2); RE(8 – 12); RY(récup active + affûtage) – fibres mixtes, optimisation nerveuse, volume réduit – mixte – Affûter sans perte; progression par diminution de volume et maintien élevé de l’intensité pour l’affûtage. ________________ 11. Entraînement fonctionnel polyvalent 🩶
+MC10.12 – Tapering : baisse volume / maintien intensité – tapering structuré – I(70 – 85%); T(30 – 45’’); S(2); RE(8 – 12); RY(récup active + affûtage) – fibres mixtes, optimisation nerveuse, volume réduit – mixte – Affûter sans perte; progression par diminution de volume et maintien élevé de l’intensité pour l’affûtage. 11. Entraînement fonctionnel polyvalent 🩶
 
 ---
 
@@ -494,7 +494,7 @@ MC11.3 – Core & posture : gainage unilatérale/globale – gainage fonctionnel
 
 ---
 
-MC11.4 – Mobilité + tonicité : exos multi – articulaires, contrôle latéralisé – mobilité active légère – I(40 – 50%); T(30 – 60’’); S(3); RE(10 – 12); RY(souplesse + stabilité) – fibres mixtes, amplitude fonctionnelle, fluidité segmentaire – aérobie – Renforcer sans rigidifier; progression par amplitude et régularité et latéralisation fonctionnelle ________________
+MC11.4 – Mobilité + tonicité : exos multi – articulaires, contrôle latéralisé – mobilité active légère – I(40 – 50%); T(30 – 60’’); S(3); RE(10 – 12); RY(souplesse + stabilité) – fibres mixtes, amplitude fonctionnelle, fluidité segmentaire – aérobie – Renforcer sans rigidifier; progression par amplitude et régularité et latéralisation fonctionnelle
 
 ---
 
@@ -526,7 +526,7 @@ MC11.11 – Stabilité extrême : gainage instable – instabilité contrôlée 
 
 ---
 
-MC11.12 – Circuit fonctionnel complet : mix effort réel / performance – circuit complet multi – dimensionnel – I(75 – 90%); T(60 – 120’’); S(3 – 4); RE(12 – 15); RY(densité équilibrée) – fibres mixtes, coordination complète, intensité progressive – anaérobie lactique – Développer la résilience globale; progression par densité et réalignement technique, dans une logique de développement post – fonctionnel – >progression par amélioration posturale et mobilisation adaptée à la sédentarité. ________________ 12. Routine de maintenance 🩷
+MC11.12 – Circuit fonctionnel complet : mix effort réel / performance – circuit complet multi – dimensionnel – I(75 – 90%); T(60 – 120’’); S(3 – 4); RE(12 – 15); RY(densité équilibrée) – fibres mixtes, coordination complète, intensité progressive – anaérobie lactique – Développer la résilience globale; progression par densité et réalignement technique, dans une logique de développement post – fonctionnel – >progression par amélioration posturale et mobilisation adaptée à la sédentarité. 12. Routine de maintenance 🩷
 
 ---
 
@@ -558,7 +558,7 @@ MC12.7 – Renfo + mobilité alternés : split simple – mobilité d’entretie
 
 ---
 
-MC12.8 – Core + cardio léger : activation + souffle – gainage léger et cardio doux – I(50 – 60%); T(45 – 60’’); S(3); RE(10 – 12); RY(stabilité + endurance) – fibres profondes + fibres lentes, contrôle axial, souffle stable – aérobie – Entretenir souffle et gainage; progression par rythme constant. ________________
+MC12.8 – Core + cardio léger : activation + souffle – gainage léger et cardio doux – I(50 – 60%); T(45 – 60’’); S(3); RE(10 – 12); RY(stabilité + endurance) – fibres profondes + fibres lentes, contrôle axial, souffle stable – aérobie – Entretenir souffle et gainage; progression par rythme constant.
 
 ---
 
