@@ -167,6 +167,9 @@ def parse_txt(txt_path:Path, debug=False):
     if debug:
         dbg_dir = Path("data2"); dbg_dir.mkdir(parents=True, exist_ok=True)
         (dbg_dir/"meso_debug_unmatched.txt").write_text("\n\n---\n\n".join(unmatched), encoding="utf-8")
+        (dbg_dir / "meso_debug_candidates.txt").write_text("\n\n---\n\n".join(candidates), encoding="utf-8")
+        import sys
+        print(f"Debug: {len(candidates)} blocs candidats, {len(records)} matchés, {len(unmatched)} non-matchés", file=sys.stderr)
 
     return records
 
