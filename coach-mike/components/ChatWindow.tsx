@@ -28,17 +28,23 @@ export default function ChatWindow() {
   const [showSources, setShowSources] = useState(false);
 
   // Load user profile for chatApi; we fetch once and cache
-  const { data: profileData } = useQuery(['profile'], async () => {
-    const res = await fetch('/api/profile');
-    if (!res.ok) throw new Error('Failed to load profile');
-    return (await res.json()).profile;
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: async () => {
+      const res = await fetch('/api/profile');
+      if (!res.ok) throw new Error('Failed to load profile');
+      return (await res.json()).profile;
+    },
   });
 
   // Load sessions list
-  const { data: sessionsData } = useQuery(['sessions'], async () => {
-    const res = await fetch('/api/sessions');
-    if (!res.ok) throw new Error('Failed to load sessions');
-    return (await res.json()).sessions as SessionItem[];
+  const { data: sessionsData } = useQuery({
+    queryKey: ['sessions'],
+    queryFn: async () => {
+      const res = await fetch('/api/sessions');
+      if (!res.ok) throw new Error('Failed to load sessions');
+      return (await res.json()).sessions as SessionItem[];
+    },
   });
 
   // When sessions load, select the most recent session by default
@@ -60,22 +66,22 @@ export default function ChatWindow() {
       return (await res.json()).id as string;
     },
     onSuccess: (id: string) => {
-      queryClient.invalidateQueries(['sessions']);
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
       setSelectedSessionId(id);
     },
   });
 
   // Load messages for selected session
-  const { data: messagesData } = useQuery(
-    ['messages', selectedSessionId],
-    async () => {
+  const { data: messagesData } = useQuery({
+    queryKey: ['messages', selectedSessionId],
+    queryFn: async () => {
       if (!selectedSessionId) return [];
       const res = await fetch(`/api/sessions/${selectedSessionId}/messages`);
       if (!res.ok) throw new Error('Failed to load messages');
       return (await res.json()).messages as Array<{ role: 'user' | 'assistant'; content: string; createdAt: string }>;
     },
-    { enabled: !!selectedSessionId }
-  );
+    enabled: !!selectedSessionId,
+  });
 
   const sendMutation = useMutation({
     mutationFn: async (message: string) => {
@@ -98,7 +104,7 @@ export default function ChatWindow() {
       return answer;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['messages', selectedSessionId]);
+      queryClient.invalidateQueries({ queryKey: ['messages', selectedSessionId] });
       setInput('');
       setShowSources(true);
     },
