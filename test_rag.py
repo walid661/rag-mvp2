@@ -14,6 +14,20 @@ from app.services.generator import RAGGenerator
 from app.services.monitor import RAGMonitor
 from dotenv import load_dotenv
 
+# Optionnel : import du router et de l'ingestion
+try:
+    from app.services.rag_router import build_filters
+    ROUTER_AVAILABLE = True
+except ImportError:
+    ROUTER_AVAILABLE = False
+    print("[test] rag_router non disponible, filtres manuels uniquement")
+
+try:
+    from app.services.ingest_logic_jsonl import ingest_logic_and_program_jsonl
+    INGEST_AVAILABLE = True
+except ImportError:
+    INGEST_AVAILABLE = False
+
 load_dotenv()
 
 # Configuration
@@ -49,6 +63,23 @@ if not loaded:
         print(f"Erreur BM25 : {e}")
 else:
     print("Index BM25 charge depuis le pickle (pas de scan Qdrant) !")
+
+# --- Optionnel : ingestion si demandée ---
+if "--ingest" in sys.argv:
+    if INGEST_AVAILABLE:
+        print("\n" + "="*70)
+        print("INGESTION DES JSONL")
+        print("="*70)
+        ingest_logic_and_program_jsonl()
+        print("\nReconstruction de l'index BM25 après ingestion...")
+        try:
+            all_docs = qdrant_client.scroll(collection_name=COLLECTION_NAME, limit=10000)[0]
+            retriever.build_bm25_index(all_docs)
+            print("Index BM25 reconstruit !\n")
+        except Exception as e:
+            print(f"Erreur lors de la reconstruction BM25 : {e}\n")
+    else:
+        print("[test] Module d'ingestion non disponible\n")
 
 # --- Mini-heuristique de filtres depuis l'intention ---
 def infer_filters_from_query(q: str) -> dict:
@@ -140,6 +171,78 @@ if retrieved2:
             print(f"  - Document {source.get('index')}: {source.get('source')} (type: {source.get('type')}, score: {score:.4f})")
 else:
     print("Aucun document trouve")
+
+# Tests avec router (si disponible)
+if ROUTER_AVAILABLE:
+    print("\n" + "="*70)
+    print("TEST 3 : Méso pour perte de poids débutant (avec router)")
+    print("="*70)
+    
+    profile = {"niveau_sportif": "débutant", "objectif_principal": "perte de poids"}
+    filters = build_filters("select_meso", profile=profile)
+    query3 = "programme pour débutant"
+    
+    print(f"Filtres appliqués: {filters}")
+    t0_3 = time.time()
+    retrieved3 = retriever.retrieve(query3, top_k=5, filters=filters)
+    t1_3 = time.time()
+    
+    print(f"Documents trouvés avec filtres {filters}: {len(retrieved3)}")
+    if retrieved3:
+        for i, doc in enumerate(retrieved3[:3], 1):
+            payload = doc.get("payload", {})
+            print(f"  {i}. {payload.get('type')} - {payload.get('meso_id', 'N/A')} - {payload.get('nom', 'N/A')[:50]}")
+            print(f"     Domain: {payload.get('domain')}, Niveau: {payload.get('niveau')}, Objectif: {payload.get('objectif')}")
+    else:
+        print("Aucun document trouvé")
+    
+    print("\n" + "="*70)
+    print("TEST 4 : Règles mc3 (avec router)")
+    print("="*70)
+    
+    filters4 = build_filters("micro_generation_rules", extra={"role_micro": "mc3", "rule_type": "progression_rule"})
+    query4 = "règles de progression pour micro-cycle mc3"
+    
+    print(f"Filtres appliqués: {filters4}")
+    t0_4 = time.time()
+    retrieved4 = retriever.retrieve(query4, top_k=5, filters=filters4)
+    t1_4 = time.time()
+    
+    print(f"Documents trouvés avec filtres {filters4}: {len(retrieved4)}")
+    if retrieved4:
+        for i, doc in enumerate(retrieved4[:3], 1):
+            payload = doc.get("payload", {})
+            print(f"  {i}. {payload.get('type')} - {payload.get('id', 'N/A')}")
+            print(f"     Domain: {payload.get('domain')}, Role: {payload.get('role_micro')}")
+            rule_text = payload.get('rule_text', '')[:80]
+            print(f"     Texte: {rule_text}...")
+    else:
+        print("Aucun document trouvé")
+    
+    print("\n" + "="*70)
+    print("TEST 5 : Schéma séance (5 blocs)")
+    print("="*70)
+    
+    filters5 = build_filters("session_schema")
+    query5 = "structure d'une séance"
+    
+    print(f"Filtres appliqués: {filters5}")
+    t0_5 = time.time()
+    retrieved5 = retriever.retrieve(query5, top_k=3, filters=filters5)
+    t1_5 = time.time()
+    
+    print(f"Documents trouvés avec filtres {filters5}: {len(retrieved5)}")
+    if retrieved5:
+        for i, doc in enumerate(retrieved5[:2], 1):
+            payload = doc.get("payload", {})
+            print(f"  {i}. {payload.get('type')} - {payload.get('id', 'N/A')}")
+            print(f"     Domain: {payload.get('domain')}")
+            if "blocks" in payload:
+                print(f"     Blocs: {payload['blocks']}")
+            rule_text = payload.get('rule_text', '')[:100]
+            print(f"     Texte: {rule_text}...")
+    else:
+        print("Aucun document trouvé")
 
 print("\nTests termines !")
 
