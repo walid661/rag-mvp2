@@ -19,14 +19,23 @@ export interface ChatStore {
 export class PrismaProfileStore implements ProfileStore {
   async get(uid: string): Promise<UserProfile | null> {
     const record = await prisma.profile.findUnique({ where: { userId: uid } });
-    return record ? (record.data as UserProfile) : null;
+    if (!record) return null;
+    // Deserialize JSON string to object (SQLite compatibility)
+    try {
+      return JSON.parse(record.data) as UserProfile;
+    } catch (e) {
+      console.error(`Failed to parse profile data for user ${uid}:`, e);
+      return null;
+    }
   }
 
   async upsert(uid: string, profile: UserProfile): Promise<void> {
+    // Serialize object to JSON string (SQLite compatibility)
+    const dataJson = JSON.stringify(profile);
     await prisma.profile.upsert({
       where: { userId: uid },
-      update: { data: profile },
-      create: { userId: uid, data: profile }
+      update: { data: dataJson },
+      create: { userId: uid, data: dataJson }
     });
   }
 }
