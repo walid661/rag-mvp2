@@ -11,8 +11,12 @@ from dotenv import load_dotenv
 # --- Validation Supabase ---
 from supabase import create_client, Client
 
+# --- Charger les variables d'environnement AVANT de les utiliser ---
+load_dotenv()
+
 # --- Mode développement sans authentification ---
 ENABLE_AUTH = os.getenv("ENABLE_AUTH", "true").lower() == "true"
+print(f"[CONFIG] ENABLE_AUTH = {ENABLE_AUTH} (valeur depuis .env: {os.getenv('ENABLE_AUTH', 'non définie')})")
 
 # --- Imports de MON RAG ---
 sys.path.insert(0, os.path.abspath('.'))
@@ -20,8 +24,6 @@ from app.services.retriever import HybridRetriever
 from app.services.generator import RAGGenerator
 from app.services.rag_router import build_filters
 from qdrant_client import QdrantClient
-
-load_dotenv()
 
 # --------------------------------------------------------------------------
 # 1. CONFIGURATION ET INITIALISATION
