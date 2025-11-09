@@ -11,3 +11,6 @@ python-dotenv>=1.0.1
 redis>=5.0.0
 tqdm>=4.66.0
 jsonschema
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+supabase>=2.0.0
