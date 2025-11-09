@@ -8,8 +8,10 @@ import tiktoken
 load_dotenv()  # Charge automatiquement les variables d'environnement
 
 # SYSTEM_PROMPT bienveillant et conversationnel
-SYSTEM_PROMPT = """Tu es Coach Mike, un coach sportif bienveillant et motivant.
-Tu réponds toujours en français, de manière naturelle, claire et encourageante.
+SYSTEM_PROMPT = """Tu es Coach Mike, un coach sportif motivant et à l'écoute.
+Tu t'exprimes toujours en français, avec un ton positif, naturel et encourageant.
+Tes réponses sont détaillées et progressives (exemples, variantes, conseils).
+Tu utilises un style conversationnel, comme si tu parlais à un vrai sportif.
 Tu adaptes ton ton au niveau et à l'objectif du sportif.
 Tu peux t'appuyer sur les documents fournis, mais tu reformules toujours dans ton propre style.
 Tu donnes des explications claires et structurées, tu encourages et tu reformules.
@@ -56,17 +58,23 @@ class RAGGenerator:
             profile: Profil utilisateur (optionnel)
             is_first_message: True si c'est le premier message de la session
         """
-        # Construire le contexte des documents
-        context_text = "\n\n".join([
-            f"[Document {i+1}] {doc['payload'].get('title', '') or doc['payload'].get('nom', '') or 'Source'}\n{doc['text']}"
-            for i, doc in enumerate(context)
-        ])
+        # Construire le contexte des documents - concaténer TOUS les documents
+        # Utiliser directement doc.get("text") pour s'assurer qu'on utilise tous les documents
+        context_parts = []
+        for i, doc in enumerate(context):
+            doc_text = doc.get("text", "") or doc.get("payload", {}).get("text", "")
+            doc_title = doc.get("payload", {}).get("title", "") or doc.get("payload", {}).get("nom", "") or "Source"
+            if doc_text:
+                context_parts.append(f"[Document {i+1}] {doc_title}\n{doc_text}")
+        
+        context_text = "\n\n".join(context_parts)
         
         # Troncature du contexte pour éviter que le prompt soit trop long
         # Limite de sécurité : 4000 caractères pour laisser de la place pour la réponse
         max_context_chars = int(os.getenv("MAX_CONTEXT_CHARS", "4000"))
         if len(context_text) > max_context_chars:
             context_text = context_text[:max_context_chars] + "\n\n[... contexte tronqué ...]"
+            print(f"[GENERATOR] Contexte tronqué à {max_context_chars} caractères")
         
         # Construire le contexte utilisateur
         user_context = ""
@@ -91,15 +99,16 @@ class RAGGenerator:
         if is_first_message:
             greeting = "Bonjour ! Je suis Coach Mike, ravi de vous accompagner dans votre parcours sportif. "
         
-        # Construire le prompt final
-        prompt = f"""{greeting}Voici les informations que j'ai trouvées pour répondre à votre question :
-
-{user_context}Documents trouvés :
+        # Construire le prompt final - structuré et clair
+        # Note: SYSTEM_PROMPT est déjà passé dans le message system, pas besoin de le répéter ici
+        prompt = f"""{user_context}Documents pertinents :
 {context_text}
 
 Question : {query}
 
 Coach Mike :"""
+        
+        print(f"[GENERATOR] Prompt construit avec {len(context)} documents, {len(context_text)} caractères de contexte")
         
         return prompt
 
@@ -117,20 +126,48 @@ Coach Mike :"""
             Dict avec 'answer', 'sources', 'context_used'
         """
         # Pack le contexte avec un budget plus généreux pour réponses conversationnelles
+        # S'assurer qu'on utilise tous les documents disponibles (au moins 3)
         context = self._pack_context(retrieved_docs, self.max_context_tokens)
+        
+        # S'assurer qu'on a au moins 3 documents pour un contexte riche
+        # Si on a moins de 3 documents après packing, prendre les 3 meilleurs même si on dépasse le budget
+        if len(context) < 3 and len(retrieved_docs) >= 3:
+            # Prendre les 3 meilleurs documents même si on dépasse le budget
+            context = sorted(retrieved_docs, key=lambda x: x.get('score', 0), reverse=True)[:3]
+            print(f"[GENERATOR] Contexte enrichi : {len(context)} documents (minimum 3 requis)")
+        elif len(context) < len(retrieved_docs):
+            # Si on a plus de documents disponibles, essayer d'en utiliser plus
+            # Prendre tous les documents si possible (dans la limite du budget)
+            context = sorted(retrieved_docs, key=lambda x: x.get('score', 0), reverse=True)
+            # Limiter par le budget de tokens
+            token_count = 0
+            final_context = []
+            for doc in context:
+                doc_tokens = len(self._enc.encode(doc.get('text', '')))
+                if token_count + doc_tokens <= self.max_context_tokens:
+                    final_context.append(doc)
+                    token_count += doc_tokens
+                else:
+                    break
+            if len(final_context) >= 3:
+                context = final_context
+                print(f"[GENERATOR] Contexte optimisé : {len(context)} documents utilisés (budget: {token_count}/{self.max_context_tokens} tokens)")
+        
+        print(f"[GENERATOR] Génération avec {len(context)} documents, temperature={self.temperature}, max_tokens={self.max_output_tokens}")
         
         # Construire le prompt structuré
         prompt = self._build_prompt(query, context, profile=profile, is_first_message=is_first_message)
         
         # Générer la réponse avec le SYSTEM_PROMPT bienveillant
+        # Utiliser les paramètres du .env : LLM_TEMPERATURE, OPENAI_MAX_TOKENS, LLM_MODEL
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
-            temperature=self.temperature,
-            max_tokens=self.max_output_tokens
+            temperature=self.temperature,  # LLM_TEMPERATURE (≈ 0.7)
+            max_tokens=self.max_output_tokens  # OPENAI_MAX_TOKENS (≈ 1200)
         )
         answer_text = response.choices[0].message.content
         

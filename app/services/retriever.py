@@ -15,6 +15,9 @@ RRF_K = int(os.getenv("RRF_K", "60"))
 ENABLE_RERANK = os.getenv("ENABLE_RERANK", "false").lower() == "true"
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 BM25_STATE_PATH = "data/processed/bm25.pkl"
+# Pondération pour fusion hybride (alpha=0.6 : 60% embeddings, 40% BM25)
+HYBRID_ALPHA = float(os.getenv("HYBRID_ALPHA", "0.6"))
+MAX_DOCS = int(os.getenv("MAX_DOCS", "8"))
 
 class HybridRetriever:
     """Combine dense vector search with BM25 and optional cross-encoder reranking."""
@@ -123,7 +126,32 @@ class HybridRetriever:
                 must.append(FieldCondition(key=key, match=MatchValue(value=val)))
         return Filter(must=must) if must else None
 
+    def _hybrid_score(self, dense_score: float, sparse_score: float, alpha: float = HYBRID_ALPHA) -> float:
+        """
+        Fusion hybride pondérée entre scores denses (embeddings) et sparse (BM25).
+        
+        Args:
+            dense_score: Score de similarité vectorielle (normalisé 0-1)
+            sparse_score: Score BM25 (normalisé 0-1)
+            alpha: Pondération (0.6 = 60% embeddings, 40% BM25)
+        
+        Returns:
+            Score hybride combiné
+        """
+        return alpha * dense_score + (1 - alpha) * sparse_score
+
+    def _normalize_scores(self, scores: List[float]) -> List[float]:
+        """Normalise les scores entre 0 et 1."""
+        if not scores:
+            return []
+        min_score = min(scores)
+        max_score = max(scores)
+        if max_score == min_score:
+            return [1.0] * len(scores)
+        return [(s - min_score) / (max_score - min_score) for s in scores]
+
     def _reciprocal_rank_fusion(self, dense, sparse: List[Tuple[str, float]], k: int = RRF_K) -> List[Tuple[str, float]]:
+        """Fusion RRF (Reciprocal Rank Fusion) pour combiner dense et sparse."""
         scores: Dict[str, float] = {}
         for rank, result in enumerate(dense, 1):
             doc_id = result.id
@@ -177,15 +205,31 @@ class HybridRetriever:
         
         qdrant_filter = self._build_filter(filters)
         
-        # Dense vector search
+        # Dense vector search avec score_threshold permissif (0.05)
         query_vector = self._embed(query)
+        max_docs_limit = int(os.getenv("MAX_DOCS", MAX_DOCS))
+        
+        print(f"[RETRIEVER] Recherche dense avec limit={max_docs_limit}, score_threshold=0.05")
         dense_results = self.qdrant.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
             query_filter=qdrant_filter,
-            limit=top_k * 2,
+            limit=max_docs_limit,
+            score_threshold=0.05,  # Plus permissif
             search_params=SearchParams(hnsw_ef=int(os.getenv("HNSW_EF", "128")))
         )
+        
+        # Fallback : si peu de résultats (< 3), réessayer sans filtres
+        if len(dense_results) < 3:
+            print(f"[RETRIEVER] Peu de résultats ({len(dense_results)}), fallback sans filtres.")
+            dense_results = self.qdrant.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                limit=max_docs_limit,
+                score_threshold=0.05,
+                with_payload=True,
+            )
+            print(f"[RETRIEVER] Fallback : {len(dense_results)} documents trouvés sans filtres")
         
         # Sparse BM25 results (post-filter if needed)
         sparse_results = self._bm25_search(query, top_k * 2)
@@ -210,9 +254,42 @@ class HybridRetriever:
                     filtered_sparse.append((doc_id, score))
             sparse_results = filtered_sparse[:top_k * 2]
         
-        # Fuse
-        fused = self._reciprocal_rank_fusion(dense_results, sparse_results, k=RRF_K)
-        candidates = fused[:max(top_k * 2, 20)]
+        # Fusion hybride : combiner dense et sparse avec pondération
+        # Extraire les scores denses et sparse
+        dense_scores_dict = {r.id: r.score for r in dense_results}
+        sparse_scores_dict = {doc_id: score for doc_id, score in sparse_results}
+        
+        # Normaliser les scores pour la fusion pondérée (0-1)
+        dense_scores_list = list(dense_scores_dict.values())
+        sparse_scores_list = list(sparse_scores_dict.values())
+        
+        dense_normalized_dict = {}
+        sparse_normalized_dict = {}
+        
+        if dense_scores_list:
+            dense_normalized = self._normalize_scores(dense_scores_list)
+            for i, doc_id in enumerate(dense_scores_dict.keys()):
+                dense_normalized_dict[doc_id] = dense_normalized[i]
+        
+        if sparse_scores_list:
+            sparse_normalized = self._normalize_scores(sparse_scores_list)
+            for i, doc_id in enumerate(sparse_scores_dict.keys()):
+                sparse_normalized_dict[doc_id] = sparse_normalized[i]
+        
+        # Fusion hybride pondérée : alpha * dense + (1-alpha) * sparse
+        all_doc_ids = set(dense_scores_dict.keys()) | set(sparse_scores_dict.keys())
+        hybrid_scores: Dict[str, float] = {}
+        
+        for doc_id in all_doc_ids:
+            dense_score = dense_normalized_dict.get(doc_id, 0.0)
+            sparse_score = sparse_normalized_dict.get(doc_id, 0.0)
+            hybrid_scores[doc_id] = self._hybrid_score(dense_score, sparse_score, alpha=HYBRID_ALPHA)
+        
+        # Trier par score hybride décroissant
+        candidates = sorted(hybrid_scores.items(), key=lambda x: x[1], reverse=True)
+        candidates = candidates[:max(top_k * 2, 20)]
+        
+        print(f"[RETRIEVER] Fusion hybride : {len(candidates)} candidats (alpha={HYBRID_ALPHA}, dense={len(dense_results)}, sparse={len(sparse_results)})")
         
         # Bonus matériel : amélioration pour correspondre au matériel utilisateur
         ql = (query or "").lower()
@@ -253,17 +330,28 @@ class HybridRetriever:
         else:
             reranked = candidates[:top_k]
         
-        # Filtrer par score_threshold mais garantir au moins top 3 même si scores faibles
+        # Filtrer par score_threshold mais garantir au moins 3 documents même si scores faibles
         filtered = [(doc_id, score) for doc_id, score in reranked if score >= score_threshold]
         
-        # Fallback : si aucun document ne passe le seuil, retourner top 3 minimum
-        if not filtered and reranked:
+        # Fallback : si moins de 3 documents, retourner top 3 minimum (ou tous disponibles)
+        if len(filtered) < 3:
+            if reranked:
+                # Prendre au moins 3 documents (ou tous disponibles si moins de 3)
+                min_docs = min(3, len(reranked))
+                filtered = reranked[:min_docs]
+                print(f"[RETRIEVER] Fallback activé : retour de {len(filtered)} documents minimum (scores: {[s for _, s in filtered]})")
+            else:
+                print(f"[RETRIEVER] ATTENTION : Aucun document disponible après reranking")
+        
+        # S'assurer qu'on retourne toujours au moins 3 documents si disponibles
+        if len(filtered) < 3 and len(reranked) >= 3:
             filtered = reranked[:3]
-            print(f"[RETRIEVER] Fallback activé : retour de top 3 documents (scores: {[s for _, s in filtered]})")
+            print(f"[RETRIEVER] Garantie minimum : {len(filtered)} documents retournés")
         
         # Batch retrieve pour limiter à 1 appel réseau
         ids = [doc_id for doc_id, _ in filtered]
         if not ids:
+            print(f"[RETRIEVER] ERREUR : Aucun document à retourner")
             return []
         
         recs = self.qdrant.retrieve(self.collection_name, ids)
