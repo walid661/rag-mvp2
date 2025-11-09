@@ -209,11 +209,21 @@ def build_filters(
     elif stage == "pick_exercises":
         f.update({"domain": "exercise", "type": "exercise"})
         # Normalisation des clés alternatives (equipment, materiel, matériel)
+        # Support multi-valeurs : equipment peut être une liste
         equipment_val = _normalize_profile_key("equipment", profile) or _normalize_profile_key("materiel", profile) or _normalize_profile_key("matériel", profile)
         if equipment_val:
-            f["equipment"] = str(equipment_val)
-        if extra.get("zone"):
-            f["zone"] = extra["zone"]
+            # Si c'est une liste, la garder telle quelle, sinon convertir en liste
+            if isinstance(equipment_val, list):
+                f["equipment"] = equipment_val
+            else:
+                f["equipment"] = [str(equipment_val)]
+        # Support multi-valeurs pour les zones
+        zones_val = profile.get("zones_ciblees") or extra.get("zones") or extra.get("zone")
+        if zones_val:
+            if isinstance(zones_val, list):
+                f["zone"] = zones_val  # Support multi-valeurs
+            else:
+                f["zone"] = [str(zones_val)]
     
     else:
         # Généralisation : si stage inconnu, construire un filtre minimal basé sur extra
@@ -231,17 +241,20 @@ def build_filters(
             if groupe:
                 f["groupe"] = groupe
 
-    # Nettoyage: supprime les clés vides et les valeurs complexes (listes, dicts)
-    # Qdrant n'accepte que des valeurs simples (str, int, float, bool)
+    # Nettoyage: supprime les clés vides mais GARDE les listes pour support multi-valeurs
+    # Qdrant supporte MatchAny pour les listes via FieldCondition(key=key, match=MatchAny(any=val))
     cleaned = {}
     for k, v in f.items():
-        if v is None or v == "" or v == []:
+        if v is None or v == "" or (isinstance(v, list) and len(v) == 0):
             continue
-        # Ne garder que les types simples compatibles Qdrant
+        # Garder les types simples ET les listes (pour support multi-valeurs)
         if isinstance(v, (str, int, float, bool)):
             cleaned[k] = v
-        elif isinstance(v, (list, dict)):
-            # Ignorer les structures complexes (Qdrant ne les supporte pas directement dans les filtres)
+        elif isinstance(v, list):
+            # Garder les listes pour support multi-valeurs (Qdrant les supporte via MatchAny)
+            cleaned[k] = v
+        elif isinstance(v, dict):
+            # Ignorer les dicts (Qdrant ne les supporte pas directement dans les filtres)
             continue
     
     return cleaned

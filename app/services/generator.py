@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 from openai import OpenAI
 import re
 from dotenv import load_dotenv
@@ -7,18 +7,27 @@ import tiktoken
 
 load_dotenv()  # Charge automatiquement les variables d'environnement
 
+# SYSTEM_PROMPT bienveillant et conversationnel
+SYSTEM_PROMPT = """Tu es Coach Mike, un coach sportif bienveillant et motivant.
+Tu réponds toujours en français, de manière naturelle, claire et encourageante.
+Tu adaptes ton ton au niveau et à l'objectif du sportif.
+Tu peux t'appuyer sur les documents fournis, mais tu reformules toujours dans ton propre style.
+Tu donnes des explications claires et structurées, tu encourages et tu reformules.
+Si une source est pertinente, tu peux la citer naturellement.
+Tu es chaleureux, professionnel et toujours positif."""
+
 class RAGGenerator:
     """Generate answers given a query and retrieved documents."""
 
     def __init__(self, model: str = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")):
         self.model = model
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        # Budget de contexte et plafond de docs (ENV) — valeurs plus frugales par défaut
-        self.max_context_tokens = int(os.getenv("MAX_CONTEXT_TOKENS", "1000"))
+        # Budget de contexte et plafond de docs (ENV) — valeurs plus généreuses pour réponses conversationnelles
+        self.max_context_tokens = int(os.getenv("MAX_CONTEXT_TOKENS", "2000"))
         self.max_docs = int(os.getenv("MAX_DOCS", "5"))
-        # Contrôle fin de la génération
-        self.max_output_tokens = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "220"))
-        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.1"))
+        # Contrôle fin de la génération — plus de tokens pour réponses conversationnelles
+        self.max_output_tokens = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "500"))
+        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))  # Plus créatif pour ton naturel
         # Encodage token pour un comptage précis
         self._enc = tiktoken.get_encoding("cl100k_base")
 
@@ -36,40 +45,81 @@ class RAGGenerator:
             token_count += doc_tokens
         return packed
 
-    def _build_prompt(self, query: str, context: List[Dict]) -> str:
+    def _build_prompt(self, query: str, context: List[Dict], profile: Optional[Dict] = None, is_first_message: bool = False) -> str:
+        """
+        Construit un prompt structuré et conversationnel.
+        
+        Args:
+            query: Requête utilisateur (peut contenir le contexte conversationnel)
+            context: Documents récupérés
+            profile: Profil utilisateur (optionnel)
+            is_first_message: True si c'est le premier message de la session
+        """
+        # Construire le contexte des documents
         context_text = "\n\n".join([
-            f"[Document {i+1}] {doc['payload'].get('title', '')} (ID: {doc['id']})\n" + doc['text']
+            f"[Document {i+1}] {doc['payload'].get('title', '') or doc['payload'].get('nom', '') or 'Source'}\n{doc['text']}"
             for i, doc in enumerate(context)
         ])
-        return f"""You are a fitness coaching assistant. Answer the question using only the information from the context.
-Always cite your sources as (Document N).
+        
+        # Construire le contexte utilisateur
+        user_context = ""
+        if profile:
+            user_context_parts = []
+            if profile.get("niveau_sportif"):
+                user_context_parts.append(f"Niveau: {profile['niveau_sportif']}")
+            if profile.get("objectif_principal"):
+                user_context_parts.append(f"Objectif: {profile['objectif_principal']}")
+            if profile.get("materiel_disponible"):
+                materiel = ", ".join(profile['materiel_disponible'])
+                user_context_parts.append(f"Matériel disponible: {materiel}")
+            if profile.get("zones_ciblees"):
+                zones = ", ".join(profile['zones_ciblees'])
+                user_context_parts.append(f"Zones ciblées: {zones}")
+            
+            if user_context_parts:
+                user_context = "Profil utilisateur :\n" + "\n".join(f"- {part}" for part in user_context_parts) + "\n\n"
+        
+        # Salutation pour le premier message
+        greeting = ""
+        if is_first_message:
+            greeting = "Bonjour ! Je suis Coach Mike, ravi de vous accompagner dans votre parcours sportif. "
+        
+        # Construire le prompt final
+        prompt = f"""{greeting}Voici les informations que j'ai trouvées pour répondre à votre question :
 
-Context:
+{user_context}Documents trouvés :
 {context_text}
 
-Question: {query}
+Question : {query}
 
-Provide a concise, actionable answer and list relevant exercises/programs. Cite your sources."""
-
-    def _get_system_prompt(self) -> str:
-        return """You are a fitness coaching assistant. Answer ONLY from the provided documents.
-Rules:
-1) Never use external knowledge; only the provided context.
-2) After each factual claim, cite as (Document N).
-3) Be concise: no preamble or titles; start directly with bullets. 4–6 bullets max, no redundant wording.
-4) Respect user constraints ONLY if they are explicitly present. Never assume 'no equipment' unless the user states it. If the user specifies equipment (e.g., dumbbells), include such items.
-5) Merge similar headings; no duplicate sections. Group related items under one heading.
-6) When listing exercises, organize by target area or equipment (e.g., glutes/quads/hamstrings; bodyweight/dumbbells).
-7) If sets/reps/rest exist in the context, include them briefly; otherwise omit."""
-
-    def generate(self, query: str, retrieved_docs: List[Dict]) -> Dict:
-        context = self._pack_context(retrieved_docs, self.max_context_tokens)
-        prompt = self._build_prompt(query, context)
+Coach Mike :"""
         
+        return prompt
+
+    def generate(self, query: str, retrieved_docs: List[Dict], profile: Optional[Dict] = None, is_first_message: bool = False) -> Dict:
+        """
+        Génère une réponse conversationnelle basée sur les documents récupérés.
+        
+        Args:
+            query: Requête utilisateur (peut contenir le contexte conversationnel)
+            retrieved_docs: Documents récupérés par le retriever
+            profile: Profil utilisateur (optionnel, pour personnalisation)
+            is_first_message: True si c'est le premier message de la session
+        
+        Returns:
+            Dict avec 'answer', 'sources', 'context_used'
+        """
+        # Pack le contexte avec un budget plus généreux pour réponses conversationnelles
+        context = self._pack_context(retrieved_docs, self.max_context_tokens)
+        
+        # Construire le prompt structuré
+        prompt = self._build_prompt(query, context, profile=profile, is_first_message=is_first_message)
+        
+        # Générer la réponse avec le SYSTEM_PROMPT bienveillant
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": self._get_system_prompt()},
+                {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
             temperature=self.temperature,

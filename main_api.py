@@ -6,6 +6,7 @@ from fastapi import FastAPI, Depends, HTTPException, Body, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
+from collections import deque
 from dotenv import load_dotenv
 
 # --- Validation Supabase ---
@@ -150,43 +151,127 @@ async def get_current_user(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail=f"Token invalide ou expiré: {str(e)}")
 
 # --------------------------------------------------------------------------
-# 4. LOGIQUE DE MAPPING (Le Cœur)
+# 4. MÉMOIRE DE SESSION
 # --------------------------------------------------------------------------
 
-def map_profile_to_rag_filters(profile: UserProfile) -> Dict[str, Any]:
+# Mémoire courte par utilisateur (garde les 5 derniers échanges)
+session_memory: Dict[str, deque] = {}
+
+def get_context(uid: str) -> str:
+    """Récupère le contexte conversationnel de l'utilisateur."""
+    history = session_memory.get(uid, deque(maxlen=5))
+    if not history:
+        return ""
+    return "\n".join(history)
+
+def update_context(uid: str, user_message: str, coach_message: str) -> None:
+    """Met à jour la mémoire de session avec un nouvel échange."""
+    history = session_memory.setdefault(uid, deque(maxlen=5))
+    history.append(f"Utilisateur: {user_message}")
+    history.append(f"Coach: {coach_message}")
+
+def clear_context(uid: str) -> None:
+    """Efface la mémoire de session d'un utilisateur."""
+    if uid in session_memory:
+        session_memory[uid].clear()
+
+# --------------------------------------------------------------------------
+# 5. LOGIQUE DE MAPPING SÉMANTIQUE (Le Cœur)
+# --------------------------------------------------------------------------
+
+def map_profile_to_rag_filters(profile: UserProfile, query: str = "") -> Dict[str, Any]:
     """
-    Traduit le profil Supabase détaillé en un dict simple 
-    que mon `rag_router.py: build_filters` peut comprendre.
+    Traduit le profil Supabase détaillé en un dict enrichi pour le RAG.
+    Analyse à la fois le profil et la requête pour un mapping sémantique intelligent.
+    Supporte des valeurs multiples et des filtres souples.
     """
     rag_profile = {}
+    query_lower = query.lower() if query else ""
 
+    # --- Niveau sportif ---
     if profile.niveau_sportif:
         rag_profile["niveau_sportif"] = profile.niveau_sportif
-        
+    else:
+        # Détection du niveau depuis la query si absent du profil
+        if any(kw in query_lower for kw in ["débutant", "debutant", "beginner", "commence", "première"]):
+            rag_profile["niveau_sportif"] = "Débutant"
+        elif any(kw in query_lower for kw in ["intermédiaire", "intermediaire", "intermediate", "moyen"]):
+            rag_profile["niveau_sportif"] = "Intermédiaire"
+        elif any(kw in query_lower for kw in ["confirmé", "confirme", "avancé", "avance", "expert", "advanced"]):
+            rag_profile["niveau_sportif"] = "Confirmé"
+        else:
+            rag_profile["niveau_sportif"] = "Débutant"  # Par défaut
+
+    # --- Objectif principal ---
     if profile.objectif_principal:
         rag_profile["objectif_principal"] = profile.objectif_principal
+    else:
+        # Détection de l'objectif depuis la query
+        if any(kw in query_lower for kw in ["perte de poids", "perte poids", "minceur", "maigrir", "sèche", "seche"]):
+            rag_profile["objectif_principal"] = "Perte de poids"
+        elif any(kw in query_lower for kw in ["prise de muscle", "muscle", "masse", "hypertrophie", "volume"]):
+            rag_profile["objectif_principal"] = "Prise de muscle"
+        elif any(kw in query_lower for kw in ["mobilité", "mobilite", "souplesse", "flexibilité", "flexibilite"]):
+            rag_profile["objectif_principal"] = "Mobilité"
+        elif any(kw in query_lower for kw in ["endurance", "cardio", "respiration", "souffle"]):
+            rag_profile["objectif_principal"] = "Endurance"
+        elif any(kw in query_lower for kw in ["force", "renforcement", "gainage", "tonification"]):
+            rag_profile["objectif_principal"] = "Renforcement"
 
-    # --- Mapping de l'équipement ---
+    # --- Zones ciblées (analyse sémantique depuis query + profil) ---
+    zones = list(profile.zones_ciblees) if profile.zones_ciblees else []
+    
+    # Détection depuis la query
+    if any(kw in query_lower for kw in ["biceps", "triceps", "bras", "épaule", "epaule", "épaules", "epaules"]):
+        if "Membre supérieur" not in zones:
+            zones.append("Membre supérieur")
+    if any(kw in query_lower for kw in ["jambes", "cuisses", "quadriceps", "mollets", "fessiers", "fessier"]):
+        if "Membre inférieur" not in zones:
+            zones.append("Membre inférieur")
+    if any(kw in query_lower for kw in ["dos", "lombaires", "dorsaux", "trapèzes", "trapezes"]):
+        if "Chaîne postérieure" not in zones:
+            zones.append("Chaîne postérieure")
+    if any(kw in query_lower for kw in ["pec", "pectoraux", "poitrine", "torse", "abdos", "abdominaux", "core"]):
+        if "Tronc" not in zones:
+            zones.append("Tronc")
+    
+    # Si aucune zone détectée, utiliser "Full body" par défaut
+    if not zones:
+        zones = ["Full body"]
+    
+    rag_profile["zones_ciblees"] = zones
+
+    # --- Mapping de l'équipement (avec support multi-valeurs) ---
+    equipment_list = []
     if profile.materiel_disponible:
         materiel_lower = [m.lower() for m in profile.materiel_disponible]
         if any("barre" in m or "rack" in m or "machine" in m for m in materiel_lower):
-            rag_profile["equipment"] = "full_gym"
-        elif any("haltère" in m or "dumbbell" in m for m in materiel_lower):
-            rag_profile["equipment"] = "dumbbell"
-        elif any("élastique" in m or "band" in m for m in materiel_lower):
-            rag_profile["equipment"] = "bands"
-        elif any("aucun" in m or "poids du corps" in m or "bodyweight" in m for m in materiel_lower):
-            rag_profile["equipment"] = "none"
-        else:
-            rag_profile["equipment"] = "none"
-    else:
-        rag_profile["equipment"] = "none"
+            equipment_list.append("full_gym")
+        if any("haltère" in m or "dumbbell" in m or "kettlebell" in m for m in materiel_lower):
+            equipment_list.append("dumbbell")
+        if any("élastique" in m or "band" in m for m in materiel_lower):
+            equipment_list.append("bands")
+        if any("tapis" in m or "mat" in m for m in materiel_lower):
+            equipment_list.append("mat")
+    
+    # Détection depuis la query
+    if any(kw in query_lower for kw in ["sans materiel", "sans matériel", "poids du corps", "bodyweight", "aucun"]):
+        equipment_list.append("none")
+    elif any(kw in query_lower for kw in ["haltère", "haltères", "dumbbell"]):
+        if "dumbbell" not in equipment_list:
+            equipment_list.append("dumbbell")
+    
+    # Par défaut, si rien n'est spécifié
+    if not equipment_list:
+        equipment_list = ["none"]
+    
+    rag_profile["equipment"] = equipment_list  # Liste pour support multi-valeurs
 
-    print(f"Profil Supabase mappé en : {rag_profile}")
+    print(f"[MAPPING] Profil mappé (query-aware): {rag_profile}")
     return rag_profile
 
 # --------------------------------------------------------------------------
-# 5. ENDPOINT PRINCIPAL: /chat
+# 6. ENDPOINT PRINCIPAL: /chat
 # --------------------------------------------------------------------------
 
 @app.post("/chat", response_model=ChatResponse)
@@ -196,6 +281,7 @@ async def chat_with_coach(
 ):
     """
     Endpoint principal pour interagir avec le coach IA.
+    Intègre la mémoire de session et un mapping sémantique intelligent.
     """
     import logging
     logging.basicConfig(level=logging.INFO)
@@ -214,34 +300,57 @@ async def chat_with_coach(
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
     try:
-        # --- Logique RAG ---
+        # --- Logique RAG avec mémoire de session ---
         
-        # 1. Mapper le profil Supabase en filtres RAG
-        rag_filters_profile = map_profile_to_rag_filters(profile)
-        print(f"[CHAT] Profil mappé: {rag_filters_profile}")
+        # 1. Récupérer le contexte conversationnel
+        context = get_context(uid)
+        is_first_message = not context
         
-        # 2. Utiliser le rag_router.py
-        # On détermine le "stage" selon le type de requête
-        # Pour l'instant, on utilise "select_meso" par défaut
-        # TODO: Ajouter une logique de détection d'intention pour choisir le stage
-        stage = "select_meso"
+        # 2. Construire la requête enrichie avec le contexte
+        if context:
+            full_query = f"{context}\n\nUtilisateur: {query}"
+        else:
+            full_query = query
         
-        # `build_filters` utilise le profil simple mappé
+        # 3. Mapper le profil Supabase en filtres RAG (avec analyse de la query)
+        rag_filters_profile = map_profile_to_rag_filters(profile, query=query)
+        print(f"[CHAT] Profil mappé (query-aware): {rag_filters_profile}")
+        
+        # 4. Utiliser le rag_router.py pour construire les filtres
+        # Détection intelligente du stage selon la requête
+        query_lower = query.lower()
+        if any(kw in query_lower for kw in ["exercice", "exercices", "mouvement", "mouvements"]):
+            stage = "pick_exercises"
+        elif any(kw in query_lower for kw in ["micro", "microcycle", "micro-cycle"]):
+            stage = "select_micro_patterns"
+        elif any(kw in query_lower for kw in ["règle", "règles", "logique", "comment"]):
+            stage = "micro_generation_rules"
+        else:
+            stage = "select_meso"  # Par défaut
+        
+        # `build_filters` utilise le profil enrichi avec valeurs multiples
         filters = build_filters(stage=stage, profile=rag_filters_profile)
         print(f"[CHAT] Filtres RAG appliqués: {filters}")
 
-        # 3. Utiliser le retriever
-        retrieved_docs = retriever.retrieve(query, top_k=5, filters=filters)
+        # 5. Utiliser le retriever avec fallback
+        retrieved_docs = retriever.retrieve(full_query, top_k=5, filters=filters)
         print(f"[CHAT] Documents trouvés: {len(retrieved_docs)}")
 
+        # Fallback : si aucun document trouvé, réessayer sans filtres stricts
         if not retrieved_docs:
-            answer = "Je n'ai pas trouvé de programme correspondant exactement à vos critères. Essayez de reformuler votre demande ou d'ajuster votre profil (par exemple, en changeant l'équipement ou l'objectif)."
-            print("[CHAT] Aucun document trouvé, réponse par défaut")
-            return ChatResponse(answer=answer, sources=[])
+            print("[CHAT] Aucun document avec filtres stricts, réessai avec filtres souples...")
+            # Réessayer avec seulement domain et type
+            soft_filters = {"domain": filters.get("domain"), "type": filters.get("type")}
+            soft_filters = {k: v for k, v in soft_filters.items() if v}
+            retrieved_docs = retriever.retrieve(full_query, top_k=3, filters=soft_filters if soft_filters else None)
+            print(f"[CHAT] Documents trouvés (filtres souples): {len(retrieved_docs)}")
 
-        # 4. Utiliser le generator
-        result = generator.generate(query, retrieved_docs)
+        # 6. Utiliser le generator avec le profil pour un contexte enrichi
+        result = generator.generate(full_query, retrieved_docs, profile=profile.dict(), is_first_message=is_first_message)
         print("[CHAT] Réponse générée avec succès")
+        
+        # 7. Mettre à jour la mémoire de session
+        update_context(uid, query, result["answer"])
         
         return ChatResponse(answer=result["answer"], sources=result["sources"])
     except Exception as e:

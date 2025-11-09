@@ -158,8 +158,20 @@ class HybridRetriever:
         result = self.qdrant.retrieve(self.collection_name, [doc_id])
         return result[0].payload.get("text", "")
 
-    def retrieve(self, query: str, top_k: int = 10, filters: Optional[Dict] = None, use_rerank: bool = None) -> List[Dict]:
-        """Retrieve top documents for the query using hybrid search."""
+    def retrieve(self, query: str, top_k: int = 10, filters: Optional[Dict] = None, use_rerank: bool = None, score_threshold: float = 0.1) -> List[Dict]:
+        """
+        Retrieve top documents for the query using hybrid search.
+        
+        Args:
+            query: Requête utilisateur
+            top_k: Nombre de documents à retourner
+            filters: Filtres Qdrant (peut contenir des listes pour multi-valeurs)
+            use_rerank: Activer le reranking (défaut: ENABLE_RERANK)
+            score_threshold: Score minimum pour inclure un document (défaut: 0.1, très permissif)
+        
+        Returns:
+            Liste de documents avec score >= score_threshold, ou top 3 minimum même si scores faibles
+        """
         if use_rerank is None:
             use_rerank = ENABLE_RERANK
         
@@ -179,12 +191,14 @@ class HybridRetriever:
         sparse_results = self._bm25_search(query, top_k * 2)
         if filters:
             # Filter BM25 results via payload_cache (0 requête Qdrant)
+            # Support multi-valeurs : si filtre est une liste, utiliser MatchAny
             filtered_sparse = []
             for doc_id, score in sparse_results:
                 p = self.payload_cache.get(doc_id, {})
                 ok = True
                 for key, val in filters.items():
                     if isinstance(val, list):
+                        # Support multi-valeurs : le document doit correspondre à au moins une valeur
                         if p.get(key) not in val:
                             ok = False
                             break
@@ -200,19 +214,38 @@ class HybridRetriever:
         fused = self._reciprocal_rank_fusion(dense_results, sparse_results, k=RRF_K)
         candidates = fused[:max(top_k * 2, 20)]
         
-        # Préférence douce : "sans matériel" -> léger bonus aux docs bodyweight
+        # Bonus matériel : amélioration pour correspondre au matériel utilisateur
         ql = (query or "").lower()
-        if ("sans materiel" in ql) or ("sans matériel" in ql) or ("poids du corps" in ql) or ("bodyweight" in ql):
-            bonus = float(os.getenv("EQUIPMENT_PREFERENCE_BONUS", "0.01"))
-            preferred_vals = {"bodyweight", "aucun", "", "none", "no_equipment"}
+        equipment_bonus = float(os.getenv("EQUIPMENT_PREFERENCE_BONUS", "0.02"))
+        
+        # Détection du matériel depuis la query
+        preferred_equipment = set()
+        if any(kw in ql for kw in ["sans materiel", "sans matériel", "poids du corps", "bodyweight", "aucun"]):
+            preferred_equipment.update({"bodyweight", "aucun", "", "none", "no_equipment"})
+        if any(kw in ql for kw in ["haltère", "haltères", "dumbbell", "dumbbells"]):
+            preferred_equipment.add("dumbbell")
+        if any(kw in ql for kw in ["élastique", "élastiques", "band", "bands"]):
+            preferred_equipment.add("bands")
+        if any(kw in ql for kw in ["barre", "rack", "machine", "machines"]):
+            preferred_equipment.add("full_gym")
+        
+        # Bonus depuis les filtres si equipment est une liste
+        if filters and "equipment" in filters:
+            eq_filter = filters["equipment"]
+            if isinstance(eq_filter, list):
+                preferred_equipment.update(eq_filter)
+            else:
+                preferred_equipment.add(str(eq_filter))
+        
+        # Appliquer le bonus
+        if preferred_equipment:
             boosted = []
             for doc_id, score in candidates:
                 p = self.payload_cache.get(doc_id, {})
                 eq = str(p.get("equipment", "")).strip().lower()
-                if eq in preferred_vals:
-                    score += bonus
+                if eq in preferred_equipment or any(peq.lower() in eq for peq in preferred_equipment):
+                    score += equipment_bonus
                 boosted.append((doc_id, score))
-            # Reste trié par score décroissant
             candidates = sorted(boosted, key=lambda x: x[1], reverse=True)
         
         if use_rerank and candidates:
@@ -220,12 +253,23 @@ class HybridRetriever:
         else:
             reranked = candidates[:top_k]
         
+        # Filtrer par score_threshold mais garantir au moins top 3 même si scores faibles
+        filtered = [(doc_id, score) for doc_id, score in reranked if score >= score_threshold]
+        
+        # Fallback : si aucun document ne passe le seuil, retourner top 3 minimum
+        if not filtered and reranked:
+            filtered = reranked[:3]
+            print(f"[RETRIEVER] Fallback activé : retour de top 3 documents (scores: {[s for _, s in filtered]})")
+        
         # Batch retrieve pour limiter à 1 appel réseau
-        ids = [doc_id for doc_id, _ in reranked]
+        ids = [doc_id for doc_id, _ in filtered]
+        if not ids:
+            return []
+        
         recs = self.qdrant.retrieve(self.collection_name, ids)
         payload_by_id = {r.id: r for r in recs}
         docs: List[Dict] = []
-        for doc_id, score in reranked:
+        for doc_id, score in filtered:
             r = payload_by_id.get(doc_id)
             if not r:
                 continue
