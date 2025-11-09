@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { SessionProvider } from 'next-auth/react';
+import { SessionProvider } from '../lib/session-provider';
 import { ReactQueryClientProvider } from '../lib/react-query-provider';
 
 export const metadata: Metadata = {
