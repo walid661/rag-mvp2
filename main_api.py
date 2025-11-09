@@ -111,7 +111,8 @@ class ChatResponse(BaseModel):
 
 async def get_current_user(authorization: str = Header(None)):
     """
-    Vérifie le token JWT Supabase ou bypass si ENABLE_AUTH=false
+    Vérifie le token JWT Supabase ou bypass si ENABLE_AUTH=false.
+    Retourne toujours un dictionnaire standard pour compatibilité avec le reste du code.
     """
     if not ENABLE_AUTH:
         print("[AUTH] Mode développement : authentification désactivée")
@@ -135,7 +136,8 @@ async def get_current_user(authorization: str = Header(None)):
             print("[AUTH] ERREUR: Token invalide (user null)")
             raise HTTPException(status_code=401, detail="Invalid token")
         print(f"[AUTH] Utilisateur authentifié: {user.id}")
-        return user
+        # Retourne un dictionnaire pour éviter les erreurs d'attributs
+        return {"id": user.id, "email": user.email}
     except Exception as e:
         print(f"[AUTH] Erreur validation token: {e}")
         import traceback
