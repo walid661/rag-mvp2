@@ -2,7 +2,7 @@
 import os
 import uvicorn
 import sys
-from fastapi import FastAPI, Depends, HTTPException, Body, Header
+from fastapi import FastAPI, Depends, HTTPException, Body, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 
 # --- Validation Supabase ---
 from supabase import create_client, Client
+
+# --- Mode développement sans authentification ---
+ENABLE_AUTH = os.getenv("ENABLE_AUTH", "true").lower() == "true"
 
 # --- Imports de MON RAG ---
 sys.path.insert(0, os.path.abspath('.'))
@@ -108,26 +111,36 @@ class ChatResponse(BaseModel):
 
 async def get_current_user(authorization: str = Header(None)):
     """
-    Valide le token JWT Supabase et retourne l'objet utilisateur.
+    Vérifie le token JWT Supabase ou bypass si ENABLE_AUTH=false
     """
+    if not ENABLE_AUTH:
+        print("[AUTH] Mode développement : authentification désactivée")
+        return {"id": "dev_user", "email": "dev@example.com"}
+
     if not authorization:
+        print("[AUTH] ERREUR: Authorization header manquant")
         raise HTTPException(status_code=401, detail="Authorization header missing")
-    
+
     if not authorization.startswith("Bearer "):
+        print("[AUTH] ERREUR: Format Authorization invalide")
         raise HTTPException(status_code=401, detail="Invalid Authorization scheme")
-    
+
     token = authorization.split(" ")[1]
-    
+    print(f"[AUTH] Token reçu (premiers 20 chars): {token[:20]}...")
+
     try:
-        # Utilise le client Supabase pour valider le token
         response = supabase.auth.get_user(token)
         user = response.user
         if not user:
+            print("[AUTH] ERREUR: Token invalide (user null)")
             raise HTTPException(status_code=401, detail="Invalid token")
+        print(f"[AUTH] Utilisateur authentifié: {user.id}")
         return user
     except Exception as e:
-        print(f"Erreur validation token: {e}")
-        raise HTTPException(status_code=401, detail="Token invalide ou expiré")
+        print(f"[AUTH] Erreur validation token: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=401, detail=f"Token invalide ou expiré: {str(e)}")
 
 # --------------------------------------------------------------------------
 # 4. LOGIQUE DE MAPPING (Le Cœur)
@@ -177,40 +190,58 @@ async def chat_with_coach(
     """
     Endpoint principal pour interagir avec le coach IA.
     """
+    import logging
+    logging.basicConfig(level=logging.INFO)
+
     query = request.query
     profile = request.profile
-    uid = user.id
+    uid = user.get("id", "unknown")
 
-    print(f"[UID: {uid}] Requête RAG reçue: '{query}'")
+    print(f"[CHAT] ========== Nouvelle requête ==========")
+    print(f"[CHAT] UID: {uid}")
+    print(f"[CHAT] Query: {query}")
+    print(f"[CHAT] Profile: {profile.dict()}")
 
-    # --- Logique RAG ---
-    
-    # 1. Mapper le profil Supabase en filtres RAG
-    rag_filters_profile = map_profile_to_rag_filters(profile)
-    
-    # 2. Utiliser le rag_router.py
-    # On détermine le "stage" selon le type de requête
-    # Pour l'instant, on utilise "select_meso" par défaut
-    # TODO: Ajouter une logique de détection d'intention pour choisir le stage
-    stage = "select_meso"
-    
-    # `build_filters` utilise le profil simple mappé
-    filters = build_filters(stage=stage, profile=rag_filters_profile)
-    print(f"[UID: {uid}] Filtres RAG appliqués: {filters}")
+    if not query or not query.strip():
+        print("[CHAT] ERREUR: Query vide")
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # 3. Utiliser le retriever
-    retrieved_docs = retriever.retrieve(query, top_k=5, filters=filters)
-    print(f"[UID: {uid}] Documents trouvés: {len(retrieved_docs)}")
+    try:
+        # --- Logique RAG ---
+        
+        # 1. Mapper le profil Supabase en filtres RAG
+        rag_filters_profile = map_profile_to_rag_filters(profile)
+        print(f"[CHAT] Profil mappé: {rag_filters_profile}")
+        
+        # 2. Utiliser le rag_router.py
+        # On détermine le "stage" selon le type de requête
+        # Pour l'instant, on utilise "select_meso" par défaut
+        # TODO: Ajouter une logique de détection d'intention pour choisir le stage
+        stage = "select_meso"
+        
+        # `build_filters` utilise le profil simple mappé
+        filters = build_filters(stage=stage, profile=rag_filters_profile)
+        print(f"[CHAT] Filtres RAG appliqués: {filters}")
 
-    if not retrieved_docs:
-        answer = "Je n'ai pas trouvé de programme correspondant exactement à vos critères. Essayez de reformuler votre demande ou d'ajuster votre profil (par exemple, en changeant l'équipement ou l'objectif)."
-        return ChatResponse(answer=answer, sources=[])
+        # 3. Utiliser le retriever
+        retrieved_docs = retriever.retrieve(query, top_k=5, filters=filters)
+        print(f"[CHAT] Documents trouvés: {len(retrieved_docs)}")
 
-    # 4. Utiliser le generator
-    result = generator.generate(query, retrieved_docs)
-    
-    print(f"[UID: {uid}] Réponse RAG générée.")
-    return ChatResponse(answer=result["answer"], sources=result["sources"])
+        if not retrieved_docs:
+            answer = "Je n'ai pas trouvé de programme correspondant exactement à vos critères. Essayez de reformuler votre demande ou d'ajuster votre profil (par exemple, en changeant l'équipement ou l'objectif)."
+            print("[CHAT] Aucun document trouvé, réponse par défaut")
+            return ChatResponse(answer=answer, sources=[])
+
+        # 4. Utiliser le generator
+        result = generator.generate(query, retrieved_docs)
+        print("[CHAT] Réponse générée avec succès")
+        
+        return ChatResponse(answer=result["answer"], sources=result["sources"])
+    except Exception as e:
+        print(f"[CHAT] ERREUR: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --------------------------------------------------------------------------
 # 6. ENDPOINT DE SANTÉ
