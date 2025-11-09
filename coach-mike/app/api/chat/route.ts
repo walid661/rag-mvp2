@@ -13,9 +13,10 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(req: NextRequest) {
   try {
     const { query, profile } = (await req.json()) as { query: string; profile: any };
-    const apiUrl = process.env.API_URL;
+    // Use API_URL (server-side) or fallback to NEXT_PUBLIC_RAG_API_URL
+    const apiUrl = process.env.API_URL || process.env.NEXT_PUBLIC_RAG_API_URL || 'http://localhost:8000';
     if (!apiUrl) {
-      return NextResponse.json({ error: 'API_URL environment variable is not defined' }, { status: 500 });
+      return NextResponse.json({ error: 'API_URL or NEXT_PUBLIC_RAG_API_URL environment variable is not defined' }, { status: 500 });
     }
     const token = process.env.RAG_API_TOKEN;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
