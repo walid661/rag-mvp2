@@ -67,6 +67,19 @@ def _build_doc_from_record(file_name: str, rec: Dict[str, Any]) -> Dict[str, Any
     # L'indexer fusionne **meta, donc domain doit être dans meta pour arriver dans le payload
     doc["meta"] = {**doc.get("meta", {}), "domain": domain, "type": typ}
     
+    # Ajouter les champs de filtrage importants au meta pour qu'ils soient dans le payload
+    # Ces champs sont utilisés par le retriever pour filtrer les documents
+    if rec.get("niveau"):
+        doc["meta"]["niveau"] = rec["niveau"]
+    if rec.get("groupe"):
+        doc["meta"]["groupe"] = rec["groupe"]
+    if rec.get("objectif"):
+        doc["meta"]["objectif"] = rec["objectif"]
+    if rec.get("methode"):
+        doc["meta"]["methode"] = rec["methode"]
+    if rec.get("equipment"):
+        doc["meta"]["equipment"] = rec["equipment"]
+    
     # (facultatif mais utile) aplatir un driver pour filtrer plus simplement
     # Si conditions.driver existe, le dupliquer en conditions_driver pour filtrage direct
     if isinstance(rec.get("conditions"), dict) and "driver" in rec["conditions"]:
