@@ -31,15 +31,12 @@ load_dotenv()
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
-# Initialise le client Supabase seulement si l'auth est activée
-if ENABLE_AUTH:
-    if not SUPABASE_URL or not SUPABASE_ANON_KEY:
-        print("ERREUR: SUPABASE_URL et SUPABASE_ANON_KEY doivent être définis dans .env quand ENABLE_AUTH=true")
-        sys.exit(1)
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-else:
-    print("[CONFIG] Mode développement : authentification désactivée (ENABLE_AUTH=false)")
-    supabase: Client = None  # type: ignore
+if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+    print("ERREUR: SUPABASE_URL et SUPABASE_ANON_KEY doivent être définis dans .env")
+    sys.exit(1)
+
+# Initialise le client Supabase
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 # --- RAG Config ---
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6335")

@@ -93,10 +93,7 @@ demo = gr.ChatInterface(
             label="Matériel (séparé par des virgules)",
             placeholder="Ex: haltères, élastiques, barre"
         )
-    ],
-    retry_btn=None,
-    undo_btn="Annuler",
-    clear_btn="Effacer"
+    ]
 )
 
 if __name__ == "__main__":
