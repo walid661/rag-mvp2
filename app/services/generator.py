@@ -26,7 +26,8 @@ class RAGGenerator:
         self.max_context_tokens = int(os.getenv("MAX_CONTEXT_TOKENS", "2000"))
         self.max_docs = int(os.getenv("MAX_DOCS", "5"))
         # Contrôle fin de la génération — plus de tokens pour réponses conversationnelles
-        self.max_output_tokens = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "500"))
+        # Utilise OPENAI_MAX_TOKENS avec une valeur par défaut généreuse (1200 tokens)
+        self.max_output_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1200"))
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))  # Plus créatif pour ton naturel
         # Encodage token pour un comptage précis
         self._enc = tiktoken.get_encoding("cl100k_base")
@@ -60,6 +61,12 @@ class RAGGenerator:
             f"[Document {i+1}] {doc['payload'].get('title', '') or doc['payload'].get('nom', '') or 'Source'}\n{doc['text']}"
             for i, doc in enumerate(context)
         ])
+        
+        # Troncature du contexte pour éviter que le prompt soit trop long
+        # Limite de sécurité : 4000 caractères pour laisser de la place pour la réponse
+        max_context_chars = int(os.getenv("MAX_CONTEXT_CHARS", "4000"))
+        if len(context_text) > max_context_chars:
+            context_text = context_text[:max_context_chars] + "\n\n[... contexte tronqué ...]"
         
         # Construire le contexte utilisateur
         user_context = ""
