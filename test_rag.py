@@ -65,12 +65,26 @@ else:
     print("Index BM25 charge depuis le pickle (pas de scan Qdrant) !")
 
 # --- Optionnel : ingestion si demandée ---
+RESET = "--reset" in sys.argv
 if "--ingest" in sys.argv:
     if INGEST_AVAILABLE:
         print("\n" + "="*70)
         print("INGESTION DES JSONL")
         print("="*70)
-        ingest_logic_and_program_jsonl()
+        if RESET:
+            # Profite du CLI pour bénéficier du drop+recreate
+            import subprocess
+            cmd = ["python3", "-m", "app.services.ingest_logic_jsonl", "--reset"]
+            if QDRANT_URL != os.getenv("QDRANT_URL", "http://localhost:6335"):
+                cmd.extend(["--qdrant-url", QDRANT_URL])
+            if COLLECTION_NAME != os.getenv("QDRANT_COLLECTION", "coach_mike"):
+                cmd.extend(["--collection", COLLECTION_NAME])
+            print(f"[test] Exécution: {' '.join(cmd)}")
+            result = subprocess.run(cmd, check=False)
+            if result.returncode != 0:
+                print(f"[test] Erreur lors de l'ingestion avec reset (code {result.returncode})")
+        else:
+            ingest_logic_and_program_jsonl()
         print("\nReconstruction de l'index BM25 après ingestion...")
         try:
             all_docs = qdrant_client.scroll(collection_name=COLLECTION_NAME, limit=10000)[0]

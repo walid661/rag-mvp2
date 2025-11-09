@@ -184,5 +184,42 @@ def ingest_logic_and_program_jsonl(
     return len(docs)
 
 if __name__ == "__main__":
-    ingest_logic_and_program_jsonl()
+    import argparse
+    from sentence_transformers import SentenceTransformer
+    from app.services.indexer import DocumentIndexer
+
+    parser = argparse.ArgumentParser(description="Ingest logic/program JSONL into Qdrant")
+    parser.add_argument("--reset", action="store_true", help="Drop & recreate the Qdrant collection before ingest")
+    parser.add_argument("--qdrant-url", default=os.getenv("QDRANT_URL"), help="Qdrant URL (env QDRANT_URL)")
+    parser.add_argument("--collection", default=os.getenv("QDRANT_COLLECTION", "coach_mike"), help="Collection name")
+    parser.add_argument("--embedding-model", default=os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2"), help="Embedding model name")
+    args = parser.parse_args()
+
+    # 1) Déterminer la dimension du modèle d'embedding (cohérent avec le retriever)
+    print(f"[ingest] Chargement du modèle pour dimension: {args.embedding_model}")
+    model = SentenceTransformer(args.embedding_model)
+    vector_size = model.get_sentence_embedding_dimension()
+    print(f"[ingest] Dimension du vecteur: {vector_size}")
+
+    # 2) Instancier l'indexer avec la même collection
+    qdrant_url = args.qdrant_url or os.getenv("QDRANT_URL", "http://localhost:6335")
+    collection_name = args.collection or os.getenv("QDRANT_COLLECTION", "coach_mike")
+    
+    indexer = DocumentIndexer(
+        qdrant_url=qdrant_url,
+        collection_name=collection_name
+    )
+
+    # 3) Reset optionnel
+    if args.reset:
+        print(f"[ingest] RESET demandé → drop + recreate '{collection_name}' ({vector_size} dims)")
+        # Cette méthode existe déjà dans DocumentIndexer
+        indexer.create_collection(vector_size=vector_size)
+
+    # 4) Ingestion standard (réutilise la logique existante)
+    ingest_logic_and_program_jsonl(
+        qdrant_url=qdrant_url,
+        collection_name=collection_name,
+        embedding_model=args.embedding_model,
+    )
 
