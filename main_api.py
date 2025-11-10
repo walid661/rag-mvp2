@@ -62,10 +62,8 @@ try:
     
     print("Chargement de l'index BM25...")
     if not retriever.load_bm25_state_if_any():
-        print("Index BM25 non trouvé. Construction depuis Qdrant...")
-        all_docs = qdrant_client.scroll(collection_name=COLLECTION_NAME, limit=10000, with_vectors=False)[0]
-        retriever.build_bm25_index(all_docs)
-        print("Index BM25 construit.")
+        print("Index BM25 non trouvé. Bootstrap depuis Qdrant...")
+        retriever.bootstrap_bm25_from_qdrant()
     else:
         print("Index BM25 chargé.")
     print("RAG Service prêt.")
@@ -329,8 +327,8 @@ async def chat_with_coach(
         else:
             stage = "select_meso"  # Par défaut
         
-        # `build_filters` utilise le profil enrichi avec valeurs multiples
-        filters = build_filters(stage=stage, profile=rag_filters_profile)
+        # `build_filters` utilise le profil enrichi avec valeurs multiples + query pour intentions
+        filters = build_filters(stage=stage, profile=rag_filters_profile, extra={"query": query})
         print(f"[CHAT] Filtres RAG appliqués: {filters}")
 
         # 5. Utiliser le retriever avec fallback

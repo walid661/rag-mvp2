@@ -1,0 +1,118 @@
+{
+  "objectif": [
+    {
+      "name": "Hypertrophie fonctionnelle",
+      "synonyms": ["renforcement", "prise de muscle", "hypertrophy"],
+      "description": "Prise de muscle et tonification ; travail en séries, tempo, RPE ; surcharges progressives"
+    },
+    {
+      "name": "Mobilité active guidée",
+      "synonyms": ["mobilité", "souplesse", "amplitude"],
+      "description": "Amplitude et contrôle ; mouvements articulaires doux, contrôle moteur, respiration"
+    },
+    {
+      "name": "Conditionnement métabolique",
+      "synonyms": ["perte de poids", "conditioning", "brûler des calories"],
+      "description": "Circuits, intervalles, travail cardio-respiratoire, densité ; gestion du temps de repos"
+    }
+  ],
+  "zone": [
+    {
+      "name": "Haut du corps",
+      "synonyms": ["upper body", "buste"],
+      "description": "Biceps, triceps, épaules, pectoraux, dos"
+    },
+    {
+      "name": "Bas du corps",
+      "synonyms": ["lower body", "jambes"],
+      "description": "Quadriceps, ischio-jambiers, fessiers, mollets, hanches"
+    },
+    {
+      "name": "Chaîne postérieure",
+      "synonyms": ["posterior chain"],
+      "description": "Dos, ischios, fessiers, érecteurs du rachis"
+    },
+    {
+      "name": "Full body",
+      "synonyms": ["corps entier", "full-body"],
+      "description": "Répartition globale ; alternance haut/bas ; mouvement polyarticulaires"
+    }
+  ],
+  "groupe": [
+    {
+      "name": "Biceps",
+      "synonyms": ["bras", "curl"],
+      "description": "Flexion du coude, supination ; curl haltères, curl marteau, curl concentré"
+    },
+    {
+      "name": "Pectoraux",
+      "synonyms": ["poitrine", "pecs"],
+      "description": "Poussées horizontales ; développé, pompes, écartés"
+    },
+    {
+      "name": "Épaules",
+      "synonyms": ["deltoïdes"],
+      "description": "Élévations latérales, développés, tirages visage"
+    },
+    {
+      "name": "Dos",
+      "synonyms": ["grand dorsal", "row"],
+      "description": "Rowing, tirages, pull-over ; gainage anti-extension"
+    },
+    {
+      "name": "Quadriceps",
+      "synonyms": ["quads"],
+      "description": "Avant de cuisse ; squat, fentes avant, leg extension"
+    },
+    {
+      "name": "Ischio-jambiers",
+      "synonyms": ["ischios"],
+      "description": "Arrière de cuisse ; hip hinge, soulevé de terre, leg curl"
+    },
+    {
+      "name": "Fessiers",
+      "synonyms": [],
+      "description": "Extension de hanche ; hip thrust, squat, fente arrière"
+    },
+    {
+      "name": "Mollets",
+      "synonyms": ["calves"],
+      "description": "Extensions de cheville ; debout/assis ; pliométrie légère"
+    }
+  ],
+  "materiel": [
+    {
+      "name": "Haltères",
+      "synonyms": ["dumbbell", "haltère"],
+      "description": "Charges libres à main ; curl, rowing, fentes, développé"
+    },
+    {
+      "name": "Kettlebell",
+      "synonyms": ["kb", "kettlebell"],
+      "description": "Swing, goblet squat, press, row ; puissance et contrôle"
+    },
+    {
+      "name": "Poids du corps",
+      "synonyms": ["bodyweight", "sans matériel"],
+      "description": "Pompes, dips, tractions, squats, gainage"
+    },
+    {
+      "name": "Élastiques",
+      "synonyms": ["bandes", "resistance bands"],
+      "description": "Assistance/résistance progressive ; tirages, écartés, mobilité"
+    }
+  ],
+  "format": [
+    {
+      "name": "Séance 30 min",
+      "synonyms": ["express", "rapide"],
+      "description": "Format court ; circuits polyarticulaires prioritaires"
+    },
+    {
+      "name": "Plan hebdomadaire",
+      "synonyms": ["planning", "semaine"],
+      "description": "Organisation sur 7 jours ; alternance groupes et intensité"
+    }
+  ]
+}
+

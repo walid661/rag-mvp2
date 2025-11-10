@@ -1,5 +1,23 @@
 # app/services/rag_router.py
 from typing import Dict, Any, Optional
+import os
+import sys
+from dotenv import load_dotenv
+
+# Ajouter le chemin racine pour importer intent.py
+sys.path.insert(0, os.path.abspath('.'))
+
+try:
+    from intent import classify_query
+except ImportError:
+    print("[RAG_ROUTER] WARNING: intent module not found, falling back to keyword-based mapping.")
+    classify_query = None
+
+load_dotenv()
+
+THRESH_PRIMARY = float(os.getenv("INTENT_THRESHOLD_PRIMARY", "0.45"))
+THRESH_SECONDARY = float(os.getenv("INTENT_THRESHOLD_SECONDARY", "0.35"))
+MIN_SHOULD = int(os.getenv("INTENT_MIN_SHOULD", "1"))
 
 def _normalize_niveau(niveau: str) -> str:
     """
@@ -138,25 +156,69 @@ def build_filters(
     f: Dict[str, Any] = {}
 
     if stage == "select_meso":
-        f.update({"domain": "program", "type": "meso_ref"})
+        # Filtres souples avec must + should + min_should
+        f = {
+            "must": [
+                {"key": "domain", "match": {"value": "program"}},
+                {"key": "type", "match": {"value": "meso_ref"}}
+            ],
+            "should": [],
+            "must_not": []
+        }
         
-        # Normalisation du niveau (accepte niveau_sportif ou niveau)
-        niveau_val = _normalize_profile_key("niveau_sportif", profile) or _normalize_profile_key("niveau", profile)
-        if niveau_val:
-            f["niveau"] = _normalize_niveau(str(niveau_val))
+        # Classification sémantique de la requête
+        q = (extra or {}).get("query", "")
+        ranked = {}
+        if q and classify_query:
+            ranked = classify_query(q)
+            print(f"[MAPPING] Intentions détectées: {ranked}")
         
-        # Normalisation de l'objectif (accepte objectif_principal ou objectif)
-        obj_val = _normalize_profile_key("objectif_principal", profile) or _normalize_profile_key("objectif", profile)
-        if obj_val:
-            # Mapping intelligent vers groupe
-            groupe = _normalize_objectif_to_groupe(str(obj_val))
-            if groupe:
-                f["groupe"] = groupe
+        # objectif (plus discriminant) - THRESH_PRIMARY
+        for label, score in ranked.get("objectif", []):
+            if score >= THRESH_PRIMARY:
+                f["should"].append({"key": "objectif", "match": {"value": label}})
+                print(f"[MAPPING] objectif={label} (score={score:.3f})")
+        
+        # zone et groupe (complémentaires) - THRESH_SECONDARY
+        for label, score in ranked.get("zone", []):
+            if score >= THRESH_SECONDARY:
+                f["should"].append({"key": "zones", "match": {"value": label}})
+                print(f"[MAPPING] zone={label} (score={score:.3f})")
+        
+        for label, score in ranked.get("groupe", []):
+            if score >= THRESH_SECONDARY:
+                f["should"].append({"key": "groupe", "match": {"value": label}})
+                print(f"[MAPPING] groupe={label} (score={score:.3f})")
+        
+        # profil utilisateur (niveau & matériel)
+        if profile:
+            niveau_val = _normalize_profile_key("niveau_sportif", profile) or _normalize_profile_key("niveau", profile)
+            if niveau_val:
+                niveau_norm = _normalize_niveau(str(niveau_val))
+                f["should"].append({"key": "niveau", "match": {"value": niveau_norm}})
             
-            # Mapping intelligent vers objectif (si disponible)
-            objectif = _normalize_objectif_to_objectif(str(obj_val))
-            if objectif:
-                f["objectif"] = objectif
+            # Matériel depuis le profil
+            materiel_val = profile.get("materiel_disponible") or profile.get("materiel") or profile.get("equipment")
+            if materiel_val:
+                if isinstance(materiel_val, list):
+                    for m in materiel_val:
+                        f["should"].append({"key": "materiel", "match": {"value": str(m)}})
+                else:
+                    f["should"].append({"key": "materiel", "match": {"value": str(materiel_val)}})
+        
+        # min_should dynamique
+        f["min_should"] = max(MIN_SHOULD, 1)
+        
+        # Si pas de should, retourner un format simple pour compatibilité
+        if not f["should"]:
+            # Fallback : format simple pour compatibilité avec retriever actuel
+            simple_f = {"domain": "program", "type": "meso_ref"}
+            niveau_val = _normalize_profile_key("niveau_sportif", profile) or _normalize_profile_key("niveau", profile)
+            if niveau_val:
+                simple_f["niveau"] = _normalize_niveau(str(niveau_val))
+            return simple_f
+        
+        return f
     
     elif stage == "select_micro_patterns":
         f.update({"domain": "program", "type": "micro_ref"})

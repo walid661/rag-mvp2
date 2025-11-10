@@ -196,9 +196,17 @@ Coach Mike :"""
         context = self._pack_context(retrieved_docs, self.max_context_tokens)
         
         # Vérifier le score top-1 : si insuffisant, NO_ANSWER
+        # Ajuster le seuil strict quand BM25 est vide
         top_score = max([d.get("score", 0.0) for d in retrieved_docs]) if retrieved_docs else 0.0
-        if top_score < STRICT_THRESHOLD:
-            print(f"[GENERATOR] Top score {top_score:.3f} < STRICT_THRESHOLD {STRICT_THRESHOLD:.2f} → NO_ANSWER.")
+        sparse_empty = all(d.get("meta", {}).get("sparse_empty", False) for d in retrieved_docs) if retrieved_docs else False
+        effective_threshold = STRICT_THRESHOLD
+        HYBRID_ALPHA = float(os.getenv("HYBRID_ALPHA", "0.6"))
+        if sparse_empty:
+            effective_threshold = min(STRICT_THRESHOLD, HYBRID_ALPHA - 0.02)
+            print(f"[GENERATOR] BM25 vide → seuil ajusté: {effective_threshold:.2f} (au lieu de {STRICT_THRESHOLD:.2f})")
+        
+        if top_score < effective_threshold:
+            print(f"[GENERATOR] Top score {top_score:.3f} < threshold {effective_threshold:.2f} → NO_ANSWER.")
             return {"answer": NO_ANSWER, "sources": [], "context_used": []}
         
         # S'assurer qu'on a au moins 3 documents pour un contexte riche

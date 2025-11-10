@@ -2,12 +2,23 @@ from typing import List, Tuple, Dict, Optional
 import numpy as np
 import os
 import pickle
+import sys
 from pathlib import Path
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, SearchParams
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from dotenv import load_dotenv
+
+# Ajouter le chemin racine pour importer intent.py
+sys.path.insert(0, os.path.abspath('.'))
+
+try:
+    from intent import classify_query, expand_query_for_bm25
+except ImportError:
+    print("[RETRIEVER] WARNING: intent module not found, BM25 expansion disabled.")
+    classify_query = None
+    expand_query_for_bm25 = None
 
 load_dotenv()
 
@@ -119,9 +130,53 @@ class HybridRetriever:
         return results
 
     def _build_filter(self, filters: Optional[Dict]) -> Optional[Filter]:
-        """Build Qdrant filter from dict."""
+        """Build Qdrant filter from dict. Support both simple format and must/should/min_should format."""
         if not filters:
             return None
+        
+        # Format souple avec must/should/min_should
+        if isinstance(filters, dict) and ("must" in filters or "should" in filters):
+            must_conditions = []
+            should_conditions = []
+            must_not_conditions = []
+            
+            # must
+            for cond in filters.get("must", []):
+                if isinstance(cond, dict) and "key" in cond and "match" in cond:
+                    key = cond["key"]
+                    match_val = cond["match"].get("value")
+                    if match_val is not None:
+                        must_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
+            
+            # should
+            for cond in filters.get("should", []):
+                if isinstance(cond, dict) and "key" in cond and "match" in cond:
+                    key = cond["key"]
+                    match_val = cond["match"].get("value")
+                    if match_val is not None:
+                        should_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
+            
+            # must_not
+            for cond in filters.get("must_not", []):
+                if isinstance(cond, dict) and "key" in cond and "match" in cond:
+                    key = cond["key"]
+                    match_val = cond["match"].get("value")
+                    if match_val is not None:
+                        must_not_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
+            
+            # Construire le filtre avec min_should
+            min_should = filters.get("min_should", 1) if should_conditions else 0
+            
+            if must_conditions or should_conditions or must_not_conditions:
+                return Filter(
+                    must=must_conditions if must_conditions else None,
+                    should=should_conditions if should_conditions else None,
+                    must_not=must_not_conditions if must_not_conditions else None,
+                    min_should=min_should if should_conditions else None
+                )
+            return None
+        
+        # Format simple (compatibilité)
         must = []
         for key, val in filters.items():
             if isinstance(val, list):
@@ -189,6 +244,30 @@ class HybridRetriever:
             return self.doc_cache[doc_id]
         result = self.qdrant.retrieve(self.collection_name, [doc_id])
         return result[0].payload.get("text", "")
+    
+    def bootstrap_bm25_from_qdrant(self, batch: int = 1000) -> None:
+        """Bootstrap BM25 index from Qdrant collection."""
+        print("[RETRIEVER] Bootstrap BM25 depuis Qdrant…")
+        next_page = None
+        all_points = []
+        while True:
+            recs, next_page = self.qdrant.scroll(
+                collection_name=self.collection_name,
+                with_payload=True,
+                with_vectors=False,
+                limit=batch,
+                offset=next_page
+            )
+            if not recs:
+                break
+            all_points.extend(recs)
+            if next_page is None:
+                break
+        if all_points:
+            self.build_bm25_index(all_points)
+            print(f"[RETRIEVER] BM25 index construit avec {len(all_points)} documents.")
+        else:
+            print("[RETRIEVER] Aucun document pour BM25.")
 
     def retrieve(self, query: str, top_k: int = 10, filters: Optional[Dict] = None, use_rerank: bool = None, score_threshold: float = 0.05) -> List[Dict]:
         """
@@ -237,8 +316,16 @@ class HybridRetriever:
             )
             print(f"[RETRIEVER] Fallback : {len(dense_results)} documents trouvés sans filtres")
         
-        # Sparse BM25 results (post-filter if needed)
-        sparse_results = self._bm25_search(query, top_k * 2)
+        # Sparse BM25 results avec expansion sémantique
+        bm25_query = query
+        if expand_query_for_bm25:
+            ranked = classify_query(query) if classify_query else {}
+            expansions = expand_query_for_bm25(ranked)
+            if expansions:
+                bm25_query = " ".join([query] + expansions)
+                print(f"[RETRIEVER] BM25 expansion: {len(expansions)} termes ajoutés")
+        sparse_results = self._bm25_search(bm25_query, top_k * 2)
+        sparse_was_empty = (len(sparse_results) == 0)
         if filters:
             # Filter BM25 results via payload_cache (0 requête Qdrant)
             # Support multi-valeurs : si filtre est une liste, utiliser MatchAny
@@ -386,5 +473,6 @@ class HybridRetriever:
                 "text": r.payload.get("text", ""),
                 "score": score,
                 "payload": r.payload,
+                "meta": {"sparse_empty": sparse_was_empty}
             })
         return docs
