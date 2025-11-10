@@ -26,8 +26,9 @@ Garde-fous (zéro hallucination)
 - Si le CONTEXTE est VIDE (aucun document fourni), tu sors exactement le jeton suivant, seul sur une ligne, sans rien d'autre :
 __NO_ANSWER__
 - Si la question n'est PAS DU TOUT liée à l'entraînement (ex: météo, cuisine, politique), tu sors __NO_ANSWER__.
-- Si le CONTEXTE contient des documents avec des métadonnées pertinentes (groupe, objectif, méthode, niveau), tu DOIS répondre en utilisant ces informations, même si le texte ne mentionne pas explicitement les mots de la requête.
+- Si le CONTEXTE contient des documents (même partiels), tu DOIS répondre en utilisant ces informations.
 - Les documents meso_ref contiennent des informations structurées : utilise les champs "groupe", "objectif", "niveau", "methode", "variables" pour construire ta réponse.
+- IMPORTANT : Si tu as des documents avec des informations pertinentes (même partielles), tu DOIS construire une réponse adaptée. Ne renvoie __NO_ANSWER__ que si le contexte est vraiment vide ou complètement hors sujet.
 
 Citations de sources
 - Quand une information provient d'un document, indique la référence sous la forme (Document N).
@@ -94,7 +95,7 @@ class RAGGenerator:
         # Contrôle fin de la génération — plus de tokens pour réponses conversationnelles
         # Utilise OPENAI_MAX_TOKENS avec une valeur par défaut généreuse (1200 tokens)
         self.max_output_tokens = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "1200"))
-        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))  # Plus strict pour mode RAG strict
+        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.5"))  # Température augmentée pour moins de strictesse
         # Encodage token pour un comptage précis
         self._enc = tiktoken.get_encoding("cl100k_base")
 
@@ -252,6 +253,16 @@ Coach Mike :"""
                 print(f"[GENERATOR] Contexte optimisé : {len(context)} documents utilisés (budget: {token_count}/{self.max_context_tokens} tokens)")
         
         print(f"[GENERATOR] Génération avec {len(context)} documents, temperature={self.temperature}, max_tokens={self.max_output_tokens}")
+        
+        # Logs pour diagnostiquer le contenu des documents
+        print(f"[GENERATOR] Contenu des documents (premiers 200 caractères):")
+        for i, doc in enumerate(context[:3]):  # Afficher les 3 premiers
+            doc_text = doc.get("text", "") or doc.get("payload", {}).get("text", "")
+            payload = doc.get("payload", {})
+            preview = doc_text[:200] + "..." if len(doc_text) > 200 else doc_text
+            metadata = f"groupe={payload.get('groupe')}, objectif={payload.get('objectif')}, niveau={payload.get('niveau')}"
+            print(f"  Document {i+1}: {metadata}")
+            print(f"    Texte: {preview}")
         
         # Construire le prompt structuré
         prompt = self._build_prompt(query, context, profile=profile, is_first_message=is_first_message)
