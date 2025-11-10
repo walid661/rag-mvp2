@@ -186,7 +186,7 @@ class HybridRetriever:
         result = self.qdrant.retrieve(self.collection_name, [doc_id])
         return result[0].payload.get("text", "")
 
-    def retrieve(self, query: str, top_k: int = 10, filters: Optional[Dict] = None, use_rerank: bool = None, score_threshold: float = 0.1) -> List[Dict]:
+    def retrieve(self, query: str, top_k: int = 10, filters: Optional[Dict] = None, use_rerank: bool = None, score_threshold: float = 0.05) -> List[Dict]:
         """
         Retrieve top documents for the query using hybrid search.
         
@@ -195,11 +195,13 @@ class HybridRetriever:
             top_k: Nombre de documents à retourner
             filters: Filtres Qdrant (peut contenir des listes pour multi-valeurs)
             use_rerank: Activer le reranking (défaut: ENABLE_RERANK)
-            score_threshold: Score minimum pour inclure un document (défaut: 0.1, très permissif)
+            score_threshold: Score minimum pour inclure un document (défaut: 0.05, mode RAG adaptatif)
         
         Returns:
-            Liste de documents avec score >= score_threshold, ou top 3 minimum même si scores faibles
+            Liste de documents avec score >= score_threshold, toujours au moins 3 documents si disponibles
         """
+        print("[RETRIEVER] Mode RAG adaptatif activé (fallback automatique, seuil permissif)")
+        
         if use_rerank is None:
             use_rerank = ENABLE_RERANK
         
@@ -219,22 +221,17 @@ class HybridRetriever:
             search_params=SearchParams(hnsw_ef=int(os.getenv("HNSW_EF", "128")))
         )
         
-        # Fallback désactivé (mode RAG strict)
-        # if len(dense_results) < 3:
-        #     print(f"[RETRIEVER] Peu de résultats ({len(dense_results)}), fallback sans filtres.")
-        #     dense_results = self.qdrant.search(
-        #         collection_name=self.collection_name,
-        #         query_vector=query_vector,
-        #         limit=max_docs_limit,
-        #         score_threshold=0.05,
-        #         with_payload=True,
-        #     )
-        #     print(f"[RETRIEVER] Fallback : {len(dense_results)} documents trouvés sans filtres")
-        
-        # Mode RAG strict : si aucun résultat, retourner vide
-        if not dense_results or len(dense_results) == 0:
-            print("[RETRIEVER] Aucun résultat trouvé (mode RAG strict).")
-            return []
+        # Fallback automatique : si moins de 3 résultats, relancer sans filtres
+        if not dense_results or len(dense_results) < 3:
+            print(f"[RETRIEVER] Peu de résultats ({len(dense_results)}), fallback sans filtres.")
+            dense_results = self.qdrant.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                limit=max_docs_limit,
+                score_threshold=0.02,  # Encore plus permissif pour le fallback
+                with_payload=True,
+            )
+            print(f"[RETRIEVER] Fallback : {len(dense_results)} documents trouvés sans filtres")
         
         # Sparse BM25 results (post-filter if needed)
         sparse_results = self._bm25_search(query, top_k * 2)
@@ -294,6 +291,17 @@ class HybridRetriever:
         candidates = sorted(hybrid_scores.items(), key=lambda x: x[1], reverse=True)
         candidates = candidates[:max(top_k * 2, 20)]
         
+        # Mode RAG adaptatif : garantir au moins 3 documents après fusion
+        if len(candidates) < 3:
+            print("[RETRIEVER] Moins de 3 documents après fusion, retour du top 3 par BM25.")
+            bm25_backup = self._bm25_search(query, top_k=3)
+            for doc_id, score in bm25_backup:
+                if doc_id not in hybrid_scores:
+                    hybrid_scores[doc_id] = 0.1 + score * 0.05
+            # Re-trier avec les nouveaux documents
+            candidates = sorted(hybrid_scores.items(), key=lambda x: x[1], reverse=True)
+            candidates = candidates[:max(3, len(candidates))]
+        
         print(f"[RETRIEVER] Fusion hybride : {len(candidates)} candidats (alpha={HYBRID_ALPHA}, dense={len(dense_results)}, sparse={len(sparse_results)})")
         
         # Bonus matériel : amélioration pour correspondre au matériel utilisateur
@@ -335,28 +343,35 @@ class HybridRetriever:
         else:
             reranked = candidates[:top_k]
         
-        # Mode RAG strict : filtrer strictement par score (>= 0.05)
-        filtered = [(doc_id, score) for doc_id, score in reranked if score >= 0.05]
+        # Mode RAG adaptatif : filtrer par score (>= 0.05) mais garantir au moins 3 documents
+        filtered = [(doc_id, score) for doc_id, score in reranked if score >= score_threshold]
         
-        # Mode RAG strict : pas de fallback, retourner vide si aucun résultat valide
-        if len(filtered) == 0:
-            print("[RETRIEVER] Tous les résultats sous le seuil → vide (RAG strict).")
-            return []
+        # Mode RAG adaptatif : garantir au moins 3 documents si disponibles
+        if len(filtered) < 3 and reranked:
+            min_docs = min(3, len(reranked))
+            filtered = reranked[:min_docs]
+            print(f"[RETRIEVER] Garantie minimum : retour de {len(filtered)} documents (scores: {[s for _, s in filtered]})")
         
-        # Fallback désactivé (mode RAG strict)
-        # if len(filtered) < 3:
-        #     if reranked:
-        #         min_docs = min(3, len(reranked))
-        #         filtered = reranked[:min_docs]
-        #         print(f"[RETRIEVER] Fallback activé : retour de {len(filtered)} documents minimum")
-        #     else:
-        #         print(f"[RETRIEVER] ATTENTION : Aucun document disponible après reranking")
+        # Mode RAG adaptatif : ne jamais retourner une liste vide
+        if not filtered or len(filtered) == 0:
+            print("[RETRIEVER] Aucun document trouvé après fallback, renvoi d'un document générique.")
+            return [{
+                "id": "placeholder",
+                "text": "Aucune donnée spécifique, réponse contextuelle libre.",
+                "score": 0.0,
+                "payload": {}
+            }]
         
         # Batch retrieve pour limiter à 1 appel réseau
         ids = [doc_id for doc_id, _ in filtered]
         if not ids:
             print(f"[RETRIEVER] ERREUR : Aucun document à retourner")
-            return []
+            return [{
+                "id": "placeholder",
+                "text": "Aucune donnée spécifique, réponse contextuelle libre.",
+                "score": 0.0,
+                "payload": {}
+            }]
         
         recs = self.qdrant.retrieve(self.collection_name, ids)
         payload_by_id = {r.id: r for r in recs}

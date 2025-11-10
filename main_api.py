@@ -335,6 +335,10 @@ async def chat_with_coach(
         # 5. Utiliser le retriever avec fallback
         retrieved_docs = retriever.retrieve(full_query, top_k=5, filters=filters)
         print(f"[CHAT] Documents trouvés: {len(retrieved_docs)}")
+        
+        # Log d'avertissement si contexte pauvre
+        if len(retrieved_docs) < 3:
+            print(f"[WARN] Contexte pauvre : moins de 3 documents ({len(retrieved_docs)}).")
 
         # Fallback : si aucun document trouvé, réessayer sans filtres stricts
         if not retrieved_docs:
