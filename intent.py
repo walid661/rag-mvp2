@@ -63,20 +63,32 @@ def classify_query(query: str) -> Dict[str, List[Tuple[str, float]]]:
     if not catalog:
         return {}
     ranked: Dict[str, List[Tuple[str, float]]] = {}
+    
+    # Détection spéciale pour "bras" : forcer l'inclusion de Biceps/Triceps
+    query_lower = query.lower()
+    force_upper_groups = any(kw in query_lower for kw in ["bras", "biceps", "triceps", "arm", "membre supérieur"])
+    
     for field, entries in catalog.items():
         scores = []
         for e in entries:
             best = max(_cosine(qv, v) for v in e["vectors"])
             scores.append((e["name"], best))
         scores.sort(key=lambda x: x[1], reverse=True)
-        ranked[field] = scores[:TOPK]
+        
+        # Pour les groupes, augmenter TOPK pour inclure tous les groupes possibles
+        if field == "groupe":
+            # Prendre top 8 au lieu de TOPK pour inclure tous les groupes possibles
+            ranked[field] = scores[:max(TOPK, 8)]
+        else:
+            ranked[field] = scores[:TOPK]
+    
     return ranked
 
 # Groupes par zone pour re-rank
 UPPER_GROUPS = {"Biceps", "Triceps", "Pectoraux", "Épaules", "Dos"}
 LOWER_GROUPS = {"Quadriceps", "Ischio-jambiers", "Fessiers", "Mollets"}
 
-def reweight_groups_by_zone(ranked: Dict[str, List[Tuple[str, float]]]) -> Dict[str, List[Tuple[str, float]]]:
+def reweight_groups_by_zone(ranked: Dict[str, List[Tuple[str, float]]], query: str = "") -> Dict[str, List[Tuple[str, float]]]:
     """Booste les groupes cohérents avec la zone principale, et pénalise les autres."""
     if not ranked or "groupe" not in ranked or "zone" not in ranked:
         return ranked
@@ -84,19 +96,35 @@ def reweight_groups_by_zone(ranked: Dict[str, List[Tuple[str, float]]]) -> Dict[
     if not zone_top:
         return ranked
 
+    # Détection spéciale pour "bras" : forcer l'inclusion de Biceps/Triceps
+    query_lower = (query or "").lower()
+    force_upper = any(kw in query_lower for kw in ["bras", "biceps", "triceps", "arm", "membre supérieur"])
+    
+    # Si "bras" détecté et zone "Haut du corps", forcer Biceps/Triceps même s'ils ne sont pas dans le top
+    if force_upper and zone_top == "Haut du corps":
+        # Récupérer tous les groupes depuis le catalog (pas seulement top 3)
+        catalog = _catalog_embeddings()
+        existing_groups = {g[0] for g in ranked["groupe"]}
+        if "groupe" in catalog:
+            for e in catalog["groupe"]:
+                # Ajouter Biceps/Triceps avec un score minimum pour qu'ils soient boostés
+                if e["name"] in UPPER_GROUPS and e["name"] not in existing_groups:
+                    ranked["groupe"].append((e["name"], 0.30))  # Score minimum pour être boosté
+                    print(f"[INTENT] Forcé inclusion de {e['name']} pour requête 'bras'")
+
     boosted = []
     for label, score in ranked["groupe"]:
         new_score = score
         if zone_top == "Haut du corps":
             if label in UPPER_GROUPS:
-                new_score += 0.15  # Boost plus fort (au lieu de 0.08)
+                new_score += 0.20  # Boost encore plus fort
             if label in LOWER_GROUPS:
-                new_score -= 0.10  # Pénalité plus forte (au lieu de 0.05)
+                new_score -= 0.15  # Pénalité encore plus forte
         elif zone_top == "Bas du corps":
             if label in LOWER_GROUPS:
-                new_score += 0.15
+                new_score += 0.20
             if label in UPPER_GROUPS:
-                new_score -= 0.10
+                new_score -= 0.15
         # sinon, pas d'ajustement
         boosted.append((label, new_score))
 

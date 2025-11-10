@@ -173,13 +173,14 @@ class HybridRetriever:
             # Construire le filtre avec min_should (objet MinShould, pas int)
             min_should_val = int(filters.get("min_should", 1) or 1) if should_conditions else 0
             
-            # 1) Essayer le schéma "nouveau" : should=MinShould(conditions=[...], min_count=n)
+            # 1) Essayer le schéma "nouveau" : should=list + min_should=MinShould(conditions=[...], min_count=n)
             if HAS_MINSHOULD and min_should_val > 0 and should_conditions:
                 try:
                     return Filter(
                         must=must_conditions if must_conditions else None,
-                        should=MinShould(conditions=should_conditions, min_count=min_should_val),  # << clé !
+                        should=should_conditions,  # Liste de conditions
                         must_not=must_not_conditions if must_not_conditions else None,
+                        min_should=MinShould(conditions=should_conditions, min_count=min_should_val)  # Objet MinShould séparé
                     )
                 except Exception as e:
                     print(f"[RETRIEVER] MinShould wrapper non supporté ({e}), fallback ancien schéma.")
@@ -351,7 +352,7 @@ class HybridRetriever:
         if expand_query_for_bm25:
             from intent import reweight_groups_by_zone
             ranked = classify_query(query) if classify_query else {}
-            ranked = reweight_groups_by_zone(ranked)  # Re-rank avant expansion
+            ranked = reweight_groups_by_zone(ranked, query=query)  # Re-rank avant expansion avec query
             expansions = expand_query_for_bm25(ranked)
             if expansions:
                 bm25_query = " ".join([query] + expansions)
