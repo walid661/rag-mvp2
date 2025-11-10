@@ -5,7 +5,13 @@ import pickle
 import sys
 from pathlib import Path
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, SearchParams, MinShould
+from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, SearchParams
+try:
+    from qdrant_client.models import MinShould  # type: ignore
+    HAS_MINSHOULD = True
+except Exception:
+    MinShould = None  # type: ignore
+    HAS_MINSHOULD = False
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from dotenv import load_dotenv
@@ -166,24 +172,39 @@ class HybridRetriever:
             
             # Construire le filtre avec min_should (objet MinShould, pas int)
             min_should_val = int(filters.get("min_should", 1) or 1) if should_conditions else 0
+            
+            # 1) Essayer le schéma "nouveau" : should=MinShould(conditions=[...], min_count=n)
+            if HAS_MINSHOULD and min_should_val > 0 and should_conditions:
+                try:
+                    return Filter(
+                        must=must_conditions if must_conditions else None,
+                        should=MinShould(conditions=should_conditions, min_count=min_should_val),  # << clé !
+                        must_not=must_not_conditions if must_not_conditions else None,
+                    )
+                except Exception as e:
+                    print(f"[RETRIEVER] MinShould wrapper non supporté ({e}), fallback ancien schéma.")
+            
+            # 2) Fallback ancien schéma : should=list + min_should=int
             try:
-                ms = MinShould(min_count=min_should_val) if min_should_val > 0 else None
-                if must_conditions or should_conditions or must_not_conditions:
+                if min_should_val > 0:
                     return Filter(
                         must=must_conditions if must_conditions else None,
                         should=should_conditions if should_conditions else None,
                         must_not=must_not_conditions if must_not_conditions else None,
-                        min_should=ms
+                        min_should=min_should_val
                     )
-            except (TypeError, AttributeError):
-                # Compat ancienne version du client Qdrant qui n'a pas MinShould
-                if must_conditions or should_conditions or must_not_conditions:
-                    return Filter(
-                        must=must_conditions if must_conditions else None,
-                        should=should_conditions if should_conditions else None,
-                        must_not=must_not_conditions if must_not_conditions else None
-                    )
-            return None
+                return Filter(
+                    must=must_conditions if must_conditions else None,
+                    should=should_conditions if should_conditions else None,
+                    must_not=must_not_conditions if must_not_conditions else None
+                )
+            except Exception as e:
+                print(f"[RETRIEVER] min_should non supporté ({e}), retour sans min_should.")
+                return Filter(
+                    must=must_conditions if must_conditions else None,
+                    should=should_conditions if should_conditions else None,
+                    must_not=must_not_conditions if must_not_conditions else None
+                )
         
         # Format simple (compatibilité)
         must = []
@@ -253,7 +274,7 @@ class HybridRetriever:
             return self.doc_cache[doc_id]
         result = self.qdrant.retrieve(self.collection_name, [doc_id])
         return result[0].payload.get("text", "")
-    
+
     def bootstrap_bm25_from_qdrant(self, batch: int = 1000) -> None:
         """Bootstrap BM25 index from Qdrant collection."""
         print("[RETRIEVER] Bootstrap BM25 depuis Qdrant…")
@@ -328,7 +349,9 @@ class HybridRetriever:
         # Sparse BM25 results avec expansion sémantique
         bm25_query = query
         if expand_query_for_bm25:
+            from intent import reweight_groups_by_zone
             ranked = classify_query(query) if classify_query else {}
+            ranked = reweight_groups_by_zone(ranked)  # Re-rank avant expansion
             expansions = expand_query_for_bm25(ranked)
             if expansions:
                 bm25_query = " ".join([query] + expansions)

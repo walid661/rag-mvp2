@@ -89,19 +89,20 @@ def reweight_groups_by_zone(ranked: Dict[str, List[Tuple[str, float]]]) -> Dict[
         new_score = score
         if zone_top == "Haut du corps":
             if label in UPPER_GROUPS:
-                new_score += 0.08
+                new_score += 0.15  # Boost plus fort (au lieu de 0.08)
             if label in LOWER_GROUPS:
-                new_score -= 0.05
+                new_score -= 0.10  # Pénalité plus forte (au lieu de 0.05)
         elif zone_top == "Bas du corps":
             if label in LOWER_GROUPS:
-                new_score += 0.08
+                new_score += 0.15
             if label in UPPER_GROUPS:
-                new_score -= 0.05
+                new_score -= 0.10
         # sinon, pas d'ajustement
         boosted.append((label, new_score))
 
     boosted.sort(key=lambda x: x[1], reverse=True)
     ranked["groupe"] = boosted
+    print(f"[INTENT] Re-rank groupes par zone '{zone_top}': {ranked['groupe'][:3]}")
     return ranked
 
 def expand_query_for_bm25(ranked: Dict[str, List[Tuple[str, float]]]) -> List[str]:
