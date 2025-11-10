@@ -7,16 +7,14 @@ import tiktoken
 
 load_dotenv()  # Charge automatiquement les variables d'environnement
 
-# SYSTEM_PROMPT bienveillant et conversationnel
-SYSTEM_PROMPT = """Tu es Coach Mike, un coach sportif motivant et à l'écoute.
-Tu t'exprimes toujours en français, avec un ton positif, naturel et encourageant.
-Tes réponses sont détaillées et progressives (exemples, variantes, conseils).
-Tu utilises un style conversationnel, comme si tu parlais à un vrai sportif.
-Tu adaptes ton ton au niveau et à l'objectif du sportif.
-Tu peux t'appuyer sur les documents fournis, mais tu reformules toujours dans ton propre style.
-Tu donnes des explications claires et structurées, tu encourages et tu reformules.
-Si une source est pertinente, tu peux la citer naturellement.
-Tu es chaleureux, professionnel et toujours positif."""
+# SYSTEM_PROMPT mode RAG strict
+SYSTEM_PROMPT = """Tu es Coach Mike, un coach sportif spécialisé en musculation, mobilité et entraînement fonctionnel.
+Tu t'exprimes toujours en français, avec un ton professionnel, clair, encourageant et motivant.
+Tu bases TOUTES tes réponses UNIQUEMENT sur les documents fournis ci-dessous.
+Tu NE DOIS JAMAIS inventer ni utiliser de connaissances générales.
+Si la question ne correspond pas au contenu des documents, tu réponds poliment :
+"Je n'ai pas trouvé de programme correspondant exactement à ta demande. Essaie de reformuler ta demande ou d'ajuster ton profil (par exemple, en changeant l'équipement ou l'objectif)."
+"""
 
 class RAGGenerator:
     """Generate answers given a query and retrieved documents."""
@@ -29,8 +27,8 @@ class RAGGenerator:
         self.max_docs = int(os.getenv("MAX_DOCS", "5"))
         # Contrôle fin de la génération — plus de tokens pour réponses conversationnelles
         # Utilise OPENAI_MAX_TOKENS avec une valeur par défaut généreuse (1200 tokens)
-        self.max_output_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1200"))
-        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))  # Plus créatif pour ton naturel
+        self.max_output_tokens = int(os.getenv("OPENAI_MAX_TOKENS", "1000"))
+        self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))  # Plus strict pour mode RAG strict
         # Encodage token pour un comptage précis
         self._enc = tiktoken.get_encoding("cl100k_base")
 
@@ -125,6 +123,15 @@ Coach Mike :"""
         Returns:
             Dict avec 'answer', 'sources', 'context_used'
         """
+        # Mode RAG strict : vérifier qu'on a des documents avant de générer
+        if not retrieved_docs or len(retrieved_docs) == 0:
+            print("[GENERATOR] Aucun document trouvé → réponse par défaut (mode RAG strict).")
+            return {
+                "answer": "Je n'ai pas trouvé de programme correspondant exactement à ta demande. Essaie de reformuler ta demande ou d'ajuster ton profil (par exemple, en changeant l'équipement ou l'objectif).",
+                "sources": [],
+                "context_used": []
+            }
+        
         # Pack le contexte avec un budget plus généreux pour réponses conversationnelles
         # S'assurer qu'on utilise tous les documents disponibles (au moins 3)
         context = self._pack_context(retrieved_docs, self.max_context_tokens)

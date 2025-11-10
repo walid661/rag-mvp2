@@ -219,17 +219,22 @@ class HybridRetriever:
             search_params=SearchParams(hnsw_ef=int(os.getenv("HNSW_EF", "128")))
         )
         
-        # Fallback : si peu de résultats (< 3), réessayer sans filtres
-        if len(dense_results) < 3:
-            print(f"[RETRIEVER] Peu de résultats ({len(dense_results)}), fallback sans filtres.")
-            dense_results = self.qdrant.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                limit=max_docs_limit,
-                score_threshold=0.05,
-                with_payload=True,
-            )
-            print(f"[RETRIEVER] Fallback : {len(dense_results)} documents trouvés sans filtres")
+        # Fallback désactivé (mode RAG strict)
+        # if len(dense_results) < 3:
+        #     print(f"[RETRIEVER] Peu de résultats ({len(dense_results)}), fallback sans filtres.")
+        #     dense_results = self.qdrant.search(
+        #         collection_name=self.collection_name,
+        #         query_vector=query_vector,
+        #         limit=max_docs_limit,
+        #         score_threshold=0.05,
+        #         with_payload=True,
+        #     )
+        #     print(f"[RETRIEVER] Fallback : {len(dense_results)} documents trouvés sans filtres")
+        
+        # Mode RAG strict : si aucun résultat, retourner vide
+        if not dense_results or len(dense_results) == 0:
+            print("[RETRIEVER] Aucun résultat trouvé (mode RAG strict).")
+            return []
         
         # Sparse BM25 results (post-filter if needed)
         sparse_results = self._bm25_search(query, top_k * 2)
@@ -330,23 +335,22 @@ class HybridRetriever:
         else:
             reranked = candidates[:top_k]
         
-        # Filtrer par score_threshold mais garantir au moins 3 documents même si scores faibles
-        filtered = [(doc_id, score) for doc_id, score in reranked if score >= score_threshold]
+        # Mode RAG strict : filtrer strictement par score (>= 0.05)
+        filtered = [(doc_id, score) for doc_id, score in reranked if score >= 0.05]
         
-        # Fallback : si moins de 3 documents, retourner top 3 minimum (ou tous disponibles)
-        if len(filtered) < 3:
-            if reranked:
-                # Prendre au moins 3 documents (ou tous disponibles si moins de 3)
-                min_docs = min(3, len(reranked))
-                filtered = reranked[:min_docs]
-                print(f"[RETRIEVER] Fallback activé : retour de {len(filtered)} documents minimum (scores: {[s for _, s in filtered]})")
-            else:
-                print(f"[RETRIEVER] ATTENTION : Aucun document disponible après reranking")
+        # Mode RAG strict : pas de fallback, retourner vide si aucun résultat valide
+        if len(filtered) == 0:
+            print("[RETRIEVER] Tous les résultats sous le seuil → vide (RAG strict).")
+            return []
         
-        # S'assurer qu'on retourne toujours au moins 3 documents si disponibles
-        if len(filtered) < 3 and len(reranked) >= 3:
-            filtered = reranked[:3]
-            print(f"[RETRIEVER] Garantie minimum : {len(filtered)} documents retournés")
+        # Fallback désactivé (mode RAG strict)
+        # if len(filtered) < 3:
+        #     if reranked:
+        #         min_docs = min(3, len(reranked))
+        #         filtered = reranked[:min_docs]
+        #         print(f"[RETRIEVER] Fallback activé : retour de {len(filtered)} documents minimum")
+        #     else:
+        #         print(f"[RETRIEVER] ATTENTION : Aucun document disponible après reranking")
         
         # Batch retrieve pour limiter à 1 appel réseau
         ids = [doc_id for doc_id, _ in filtered]
