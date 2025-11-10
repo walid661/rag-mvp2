@@ -24,27 +24,50 @@ MIN_SHOULD = int(os.getenv("INTENT_MIN_SHOULD", "1"))
 # ============================================================================
 
 # Mapping des objectifs taxonomy → objectifs réels dans les documents
+# IMPORTANT: Utiliser uniquement les valeurs qui existent vraiment dans les documents
 TAXONOMY_OBJECTIF_TO_DOC_OBJECTIF: Dict[str, List[str]] = {
     "Hypertrophie fonctionnelle": [
         "renforcement contrôlé",
-        "hypertrophie ciblée",
         "2 groupes / séance",
         "split alterné haut/bas",
+        "split alterné haut bas",
         "force contrôlée avec charge modérée",
         "routine structurée mixte",
+        "Classique",
+        "Pumping",
+        "Tempo training",
+        "Tempo training + Dead Set",
+        "Tempo training évolutif",
+        "Tri – set / Bi – set / Drop Set",
+        "Pumping + Split précis",
+        "Dead set / Bi – set volumique",
     ],
     "Mobilité active guidée": [
         "mobilité active guidée",
         "mobilité active évoluée",
         "mobilité active sous charge légère",
-        "mobilité fonctionnelle sous charge",
+        "mobilité d'entretien",
+        "mobilité sous résistance",
+        "mobilité sous résistance / contracté/relâché sous tension",
+        "mobilité sous charge",
+        "mobility flow",
+        "mobility flow avancé",
+        "mobility flow lent guidé",
     ],
     "Conditionnement métabolique": [
-        "TABATA modifié",
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
         "circuits training continu / fractionné lent",
         "cardio continu à intensité basse à moyenne",
         "AMRAP + HIIT combiné",
-        "brûlage profond",
+        "HIIT progressif débutant",
+        "HIIT explosif + renfo ciblée",
+        "metcon modéré + cardio fonctionnel",
+        "metcon cardio modéré",
+        "metcon cardio/renfo combiné",
+        "metcon renfo (charges modérées, récup courte)",
+        "tonification + cardio combiné",
+        "Atteindre un pic de dépense énergétique; progression via volume extrême et récupération courte.",
     ],
 }
 
@@ -226,27 +249,70 @@ USER_KEYWORDS_TO_DOC_OBJECTIF: Dict[str, List[str]] = {
     "tonification": ["renforcement contrôlé"],
     
     # Cardio / Endurance
-    "endurance": ["circuits training continu / fractionné lent", "cardio continu à intensité basse à moyenne"],
-    "cardio": ["circuits training continu / fractionné lent", "cardio continu à intensité basse à moyenne", "TABATA modifié"],
-    "respiration": ["circuits training continu / fractionné lent"],
-    "souffle": ["circuits training continu / fractionné lent"],
+    "endurance": [
+        "circuits training continu / fractionné lent",
+        "cardio continu à intensité basse à moyenne",
+        "cardio continu modéré",
+        "cardio continu léger",
+    ],
+    "cardio": [
+        "circuits training continu / fractionné lent",
+        "cardio continu à intensité basse à moyenne",
+        "cardio continu modéré",
+        "cardio continu léger",
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
+    ],
+    "respiration": ["circuits training continu / fractionné lent", "étirements + respiration"],
+    "souffle": ["circuits training continu / fractionné lent", "étirements + respiration"],
     
     # Métabolique / Perte de poids
-    "perte de poids": ["TABATA modifié", "AMRAP + HIIT combiné", "brûlage profond"],
-    "perte poids": ["TABATA modifié", "AMRAP + HIIT combiné", "brûlage profond"],
-    "minceur": ["TABATA modifié", "AMRAP + HIIT combiné"],
-    "sèche": ["TABATA modifié", "AMRAP + HIIT combiné"],
-    "seche": ["TABATA modifié", "AMRAP + HIIT combiné"],
-    "brûlage": ["AMRAP + HIIT combiné", "brûlage profond"],
-    "brulage": ["AMRAP + HIIT combiné", "brûlage profond"],
-    "métabolique": ["TABATA modifié", "AMRAP + HIIT combiné"],
-    "metabolique": ["TABATA modifié", "AMRAP + HIIT combiné"],
+    "perte de poids": [
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
+        "AMRAP + HIIT combiné",
+        "HIIT progressif débutant",
+        "HIIT explosif + renfo ciblée",
+    ],
+    "perte poids": [
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
+        "AMRAP + HIIT combiné",
+        "HIIT progressif débutant",
+    ],
+    "minceur": [
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
+        "AMRAP + HIIT combiné",
+    ],
+    "sèche": [
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
+        "AMRAP + HIIT combiné",
+    ],
+    "seche": [
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
+        "AMRAP + HIIT combiné",
+    ],
+    "brûlage": ["AMRAP + HIIT combiné", "HIIT explosif + renfo ciblée"],
+    "brulage": ["AMRAP + HIIT combiné", "HIIT explosif + renfo ciblée"],
+    "métabolique": [
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
+        "AMRAP + HIIT combiné",
+    ],
+    "metabolique": [
+        "TABATA modifié (20''/20'' ou 20''/30'')",
+        "TABATA modifié (30''/20'' ou 40''/20'')",
+        "AMRAP + HIIT combiné",
+    ],
     
     # Hypertrophie
-    "hypertrophie": ["hypertrophie ciblée", "2 groupes / séance"],
-    "volume": ["hypertrophie ciblée", "2 groupes / séance"],
-    "masse musculaire": ["hypertrophie ciblée", "2 groupes / séance"],
-    "prise de muscle": ["hypertrophie ciblée", "2 groupes / séance"],
+    "hypertrophie": ["2 groupes / séance", "Classique", "Pumping", "Tempo training"],
+    "volume": ["2 groupes / séance", "Classique", "Pumping"],
+    "masse musculaire": ["2 groupes / séance", "Classique", "Pumping"],
+    "prise de muscle": ["2 groupes / séance", "Classique", "Pumping"],
 }
 
 # Tous les groupes fonctionnels valides dans les documents
@@ -263,6 +329,145 @@ VALID_DOC_GROUPES: Set[str] = {
     "Préparation spécifique",
     "Fonctionnel & Prévention",
     "Maintenance & Reset",
+}
+
+# Objectifs réels qui existent dans les documents (basé sur l'analyse de meso_catalog.jsonl)
+# Ces valeurs sont utilisées pour valider les filtres objectif avant de les ajouter
+VALID_DOC_OBJECTIFS: Set[str] = {
+    # Mobilité
+    "mobilité active guidée",
+    "mobilité active évoluée",
+    "mobilité active sous charge légère",
+    "mobilité d'entretien",
+    "mobilité sous résistance",
+    "mobilité sous résistance / contracté/relâché sous tension",
+    "mobilité sous charge",
+    "mobility flow",
+    "mobility flow avancé",
+    "mobility flow lent guidé",
+    
+    # Renforcement / Force
+    "renforcement contrôlé",
+    "renforcement structuré : circuits poids du corps + élastiques",
+    "renforcement postural léger",
+    "force",
+    "force contrôlée avec charge modérée",
+    
+    # Gainage / Stabilité
+    "gainage postural statique contrôlé",
+    "gainage fonctionnel instable / stabilité dynamique unilatérale",
+    "gainage dynamique instable",
+    "gainage dynamique avec charge ou instabilité + surcharge",
+    "gainage fonctionnel guidé",
+    "gainage léger & respiration",
+    "gainage léger & cardio doux",
+    "gainage léger et cardio doux",
+    "stabilité fonctionnelle simple",
+    "instabilité contrôlée",
+    
+    # Split / Routine
+    "split alterné haut/bas",
+    "split alterné haut bas",
+    "Split push/pull ou haut/bas progressif",
+    "split spécifique mixte",
+    "split hebdo léger",
+    "routine structurée mixte",
+    "routine fonctionnelle douce",
+    "routine métabolique hebdomadaire",
+    "routine vitalité",
+    "routine légère full body",
+    "routine de mise en route spécifique",
+    
+    # Hypertrophie
+    "Classique",
+    "Pumping",
+    "Tempo training",
+    "Tempo training + Dead Set",
+    "Tempo training évolutif",
+    "2 groupes / séance",
+    "Tri – set / Bi – set / Drop Set",
+    "Pumping + Split précis",
+    "Dead set / Bi – set volumique",
+    
+    # Cardio / Endurance
+    "cardio continu à intensité basse à moyenne",
+    "cardio continu modéré",
+    "cardio continu léger",
+    "cardio fonctionnel doux",
+    "cardio",
+    "tempo continu contrôlé",
+    "tempo run soutenu",
+    "intervalles classiques",
+    "intervalles intensifs (VO2max)",
+    "fartlek structuré",
+    
+    # Métabolique / HIIT
+    "TABATA modifié (20''/20'' ou 20''/30'')",
+    "TABATA modifié (30''/20'' ou 40''/20'')",
+    "circuits training continu / fractionné lent",
+    "circuits fractionnés (intermittent structuré)",
+    "circuits cardio modéré par intervalles lactiques",
+    "circuits fonctionnels",
+    "circuit complet multi – dimensionnel",
+    "circuit full body dynamique doux",
+    "HIIT progressif débutant",
+    "HIIT explosif + renfo ciblée",
+    "AMRAP + HIIT combiné",
+    "metcon modéré + cardio fonctionnel",
+    "metcon cardio modéré",
+    "metcon cardio/renfo combiné",
+    "metcon renfo (charges modérées, récup courte)",
+    "tonification + cardio combiné",
+    "Atteindre un pic de dépense énergétique; progression via volume extrême et récupération courte.",
+    
+    # Puissance / Explosivité
+    "circuits dynamiques simples",
+    "musculaire : activation nerf/muscle",
+    "pliométrie douce guidée (basse, moyenne)",
+    "contractions rapides au poids du corps",
+    "pliométrie légère + coordination",
+    "intervalles de puissance (1:3 / 1:4)",
+    "mix explosivité + gainage actif",
+    "Max effort (3 – 5 reps lourdes, récup complète)",
+    "cycles élastiques",
+    "complexes dynamiques",
+    
+    # Récupération / Respiration
+    "mobility flow lent guidé",
+    "contracté / relâché passif",
+    "séance guidée lente",
+    "cohérence cardiaque",
+    "étirements + respiration",
+    "effort : respiration",
+    "auto",
+    "surcharge : programme hebdo",
+    "récupération systémique structurée",
+    
+    # Bien-être
+    "full body doux structuré",
+    "routine fonctionnelle douce",
+    "raideur : mobilisation lente",
+    "stimulation complète combinée",
+    
+    # Préparation
+    "simulation type",
+    "simulation compétition",
+    "effort proche des conditions réelles",
+    "charges spécifiques : formats très ciblés",
+    "tapering structuré",
+    
+    # Fonctionnel
+    "mouvements fonctionnels guidés, gestes fonctionnels unilatéraux",
+    "contrôle latéralisé",
+    "agilité / motricité",
+    
+    # Autres
+    "postures statiques guidées",
+    "maintien postural + respiration diaphragmatique lente",
+    "contracté / relâché",
+    "libération myofasciale : foam roller / balles",
+    "reset physique",
+    "plans",
 }
 
 # ============================================================================
@@ -520,15 +725,29 @@ def build_filters(
                 print(f"[MAPPING] mots-clés query → objectifs docs: {keyword_objectifs}")
         
         # 5. Ajouter les filtres should pour les objectifs (valeurs réelles)
+        # IMPORTANT: Ne filtrer par objectif que si la valeur existe vraiment dans les documents
+        # Les objectifs sont très variés (108 valeurs uniques), donc on les utilise comme filtre optionnel
+        objectif_filters_added = 0
         for obj in matched_objectifs:
-            f["should"].append({"key": "objectif", "match": {"value": obj}})
-            print(f"[MAPPING] filtre objectif={obj}")
+            # Vérifier que l'objectif existe vraiment dans les documents
+            if obj in VALID_DOC_OBJECTIFS:
+                f["should"].append({"key": "objectif", "match": {"value": obj}})
+                objectif_filters_added += 1
+                print(f"[MAPPING] filtre objectif={obj} (validé)")
+            else:
+                print(f"[MAPPING] filtre objectif={obj} IGNORÉ (n'existe pas dans les documents)")
         
         # 6. Ajouter les filtres should pour les groupes (valeurs réelles)
+        # PRIORITÉ: Les groupes sont plus stables et fiables que les objectifs
+        groupe_filters_added = 0
         for groupe in matched_groupes:
             if groupe in VALID_DOC_GROUPES:  # Vérifier que c'est une valeur valide
                 f["should"].append({"key": "groupe", "match": {"value": groupe}})
+                groupe_filters_added += 1
                 print(f"[MAPPING] filtre groupe={groupe}")
+        
+        # Log pour diagnostic
+        print(f"[MAPPING] Filtres ajoutés: {objectif_filters_added} objectifs, {groupe_filters_added} groupes")
         
         # 7. Profil utilisateur (niveau & matériel)
         if profile:
@@ -547,7 +766,18 @@ def build_filters(
                     print(f"[MAPPING] filtre materiel={m}")
         
         # min_should dynamique
-        f["min_should"] = max(MIN_SHOULD, 1)
+        # Prioriser groupe + niveau (plus stables) plutôt que objectif (trop varié)
+        # Si on a des filtres groupe, on peut être plus strict
+        # Si on n'a que des filtres objectif, on doit être plus permissif
+        if groupe_filters_added > 0:
+            # Si on a des groupes, on peut exiger au moins 1 filtre groupe OU niveau
+            f["min_should"] = max(MIN_SHOULD, 1)
+        elif objectif_filters_added > 0:
+            # Si on n'a que des objectifs, être plus permissif (min_should=1)
+            f["min_should"] = 1
+        else:
+            # Si on n'a ni groupe ni objectif, au moins niveau ou matériel
+            f["min_should"] = 1
         
         # Si pas de should, retourner un format simple pour compatibilité
         if not f["should"]:
