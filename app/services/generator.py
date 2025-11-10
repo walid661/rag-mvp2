@@ -198,12 +198,25 @@ Coach Mike :"""
         # Vérifier le score top-1 : si insuffisant, NO_ANSWER
         # Ajuster le seuil strict quand BM25 est vide
         top_score = max([d.get("score", 0.0) for d in retrieved_docs]) if retrieved_docs else 0.0
+        all_scores = [d.get("score", 0.0) for d in retrieved_docs]
+        print(f"[GENERATOR] Scores des documents: {[f'{s:.3f}' for s in all_scores]}")
+        print(f"[GENERATOR] Top score: {top_score:.3f}")
+        
         sparse_empty = all(d.get("meta", {}).get("sparse_empty", False) for d in retrieved_docs) if retrieved_docs else False
         effective_threshold = STRICT_THRESHOLD
         HYBRID_ALPHA = float(os.getenv("HYBRID_ALPHA", "0.6"))
         if sparse_empty:
-            effective_threshold = min(STRICT_THRESHOLD, HYBRID_ALPHA - 0.02)
+            # Si BM25 est vide, le score hybride = 0.6 * dense_score
+            # Donc pour avoir un score hybride >= threshold, il faut dense_score >= threshold / 0.6
+            effective_threshold = min(STRICT_THRESHOLD / HYBRID_ALPHA, STRICT_THRESHOLD - 0.10)
             print(f"[GENERATOR] BM25 vide → seuil ajusté: {effective_threshold:.2f} (au lieu de {STRICT_THRESHOLD:.2f})")
+        
+        # Ajuster le seuil strict en fonction du nombre de documents trouvés
+        num_docs = len(retrieved_docs)
+        if num_docs >= 3:
+            # Si on a au moins 3 documents, réduire le seuil strict
+            effective_threshold = max(effective_threshold - 0.10, 0.30)  # Minimum 0.30
+            print(f"[GENERATOR] {num_docs} documents trouvés → seuil ajusté: {effective_threshold:.2f}")
         
         if top_score < effective_threshold:
             print(f"[GENERATOR] Top score {top_score:.3f} < threshold {effective_threshold:.2f} → NO_ANSWER.")
