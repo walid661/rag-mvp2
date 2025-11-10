@@ -165,10 +165,12 @@ class RAGGenerator:
         
         # Construire le prompt final - structuré et clair
         # Note: SYSTEM_PROMPT est déjà passé dans le message system, pas besoin de le répéter ici
-        prompt = f"""{user_context}Documents pertinents :
+        prompt = f"""{user_context}Documents pertinents (sélectionnés selon votre profil et votre requête) :
 {context_text}
 
 Question : {query}
+
+Instructions : Ces documents ont été sélectionnés car ils correspondent à votre profil (niveau, objectif, matériel) et à votre requête. Utilise-les pour construire une séance adaptée, même si le texte ne mentionne pas explicitement tous les mots de votre requête. Par exemple, si vous demandez "bras" et qu'un document concerne les "biceps" ou "triceps", utilisez-le pour construire une séance pour les bras.
 
 Coach Mike :"""
         
