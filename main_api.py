@@ -110,6 +110,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     sources: List[Dict[str, Any]] = Field(default_factory=list)
+    no_answer: Optional[bool] = None
 
 # --------------------------------------------------------------------------
 # 3. DÉPENDANCE D'AUTHENTIFICATION (Supabase)
@@ -351,6 +352,14 @@ async def chat_with_coach(
 
         # 6. Utiliser le generator avec le profil pour un contexte enrichi
         result = generator.generate(full_query, retrieved_docs, profile=profile.dict(), is_first_message=is_first_message)
+        
+        # Gérer NO_ANSWER : ne rien afficher si réponse insuffisante
+        ans = (result or {}).get("answer", "")
+        no_answer_token = os.getenv("NO_ANSWER_TOKEN", "__NO_ANSWER__")
+        if ans == no_answer_token:
+            print("[CHAT] NO_ANSWER détecté → pas de réponse affichée.")
+            return ChatResponse(answer="", sources=[], no_answer=True)
+        
         print("[CHAT] Réponse générée avec succès")
         
         # 7. Mettre à jour la mémoire de session

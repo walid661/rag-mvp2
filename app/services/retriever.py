@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Mode RAG : strict | auto | flexible
+RAG_MODE = os.getenv("RAG_MODE", "strict").lower()
+STRICT_MODE = RAG_MODE == "strict"
+
 RRF_K = int(os.getenv("RRF_K", "60"))
 ENABLE_RERANK = os.getenv("ENABLE_RERANK", "false").lower() == "true"
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
@@ -352,26 +356,23 @@ class HybridRetriever:
             filtered = reranked[:min_docs]
             print(f"[RETRIEVER] Garantie minimum : retour de {len(filtered)} documents (scores: {[s for _, s in filtered]})")
         
-        # Mode RAG adaptatif : ne jamais retourner une liste vide
+        # Mode strict : liste vide si aucun document pertinent
         if not filtered or len(filtered) == 0:
-            print("[RETRIEVER] Aucun document trouvé après fallback, renvoi d'un document générique.")
-            return [{
-                "id": "placeholder",
-                "text": "Aucune donnée spécifique, réponse contextuelle libre.",
-                "score": 0.0,
-                "payload": {}
-            }]
+            if STRICT_MODE:
+                print("[RETRIEVER] Aucun document pertinent après fallback (mode strict) → return [].")
+                return []
+            # Mode non strict : on peut tolérer 1 doc faible si besoin (optionnel)
+            print("[RETRIEVER] Aucun document pertinent, mode non strict → return [].")
+            return []
         
         # Batch retrieve pour limiter à 1 appel réseau
         ids = [doc_id for doc_id, _ in filtered]
         if not ids:
-            print(f"[RETRIEVER] ERREUR : Aucun document à retourner")
-            return [{
-                "id": "placeholder",
-                "text": "Aucune donnée spécifique, réponse contextuelle libre.",
-                "score": 0.0,
-                "payload": {}
-            }]
+            if STRICT_MODE:
+                print("[RETRIEVER] ERREUR : Aucun document à retourner (mode strict) → return [].")
+                return []
+            print("[RETRIEVER] ERREUR : Aucun document à retourner → return [].")
+            return []
         
         recs = self.qdrant.retrieve(self.collection_name, ids)
         payload_by_id = {r.id: r for r in recs}
