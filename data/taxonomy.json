@@ -41,8 +41,13 @@
   "groupe": [
     {
       "name": "Biceps",
-      "synonyms": ["bras", "curl"],
+      "synonyms": ["bras", "biceps", "curl", "arm"],
       "description": "Flexion du coude, supination ; curl haltères, curl marteau, curl concentré"
+    },
+    {
+      "name": "Triceps",
+      "synonyms": ["triceps", "extension triceps"],
+      "description": "Extension du coude ; dips, extension au-dessus de la tête, pushdown"
     },
     {
       "name": "Pectoraux",

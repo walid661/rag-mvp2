@@ -170,7 +170,9 @@ def build_filters(
         q = (extra or {}).get("query", "")
         ranked = {}
         if q and classify_query:
+            from intent import reweight_groups_by_zone
             ranked = classify_query(q)
+            ranked = reweight_groups_by_zone(ranked)  # Re-rank des groupes par zone
             print(f"[MAPPING] Intentions détectées: {ranked}")
         
         # objectif (plus discriminant) - THRESH_PRIMARY

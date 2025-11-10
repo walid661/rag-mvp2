@@ -72,6 +72,38 @@ def classify_query(query: str) -> Dict[str, List[Tuple[str, float]]]:
         ranked[field] = scores[:TOPK]
     return ranked
 
+# Groupes par zone pour re-rank
+UPPER_GROUPS = {"Biceps", "Triceps", "Pectoraux", "Épaules", "Dos"}
+LOWER_GROUPS = {"Quadriceps", "Ischio-jambiers", "Fessiers", "Mollets"}
+
+def reweight_groups_by_zone(ranked: Dict[str, List[Tuple[str, float]]]) -> Dict[str, List[Tuple[str, float]]]:
+    """Booste les groupes cohérents avec la zone principale, et pénalise les autres."""
+    if not ranked or "groupe" not in ranked or "zone" not in ranked:
+        return ranked
+    zone_top = ranked["zone"][0][0] if ranked["zone"] else None
+    if not zone_top:
+        return ranked
+
+    boosted = []
+    for label, score in ranked["groupe"]:
+        new_score = score
+        if zone_top == "Haut du corps":
+            if label in UPPER_GROUPS:
+                new_score += 0.08
+            if label in LOWER_GROUPS:
+                new_score -= 0.05
+        elif zone_top == "Bas du corps":
+            if label in LOWER_GROUPS:
+                new_score += 0.08
+            if label in UPPER_GROUPS:
+                new_score -= 0.05
+        # sinon, pas d'ajustement
+        boosted.append((label, new_score))
+
+    boosted.sort(key=lambda x: x[1], reverse=True)
+    ranked["groupe"] = boosted
+    return ranked
+
 def expand_query_for_bm25(ranked: Dict[str, List[Tuple[str, float]]]) -> List[str]:
     """Expansion lexicale à partir des labels + descriptions (1–2 tokens discriminants)."""
     cat = _taxonomy()

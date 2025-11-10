@@ -5,7 +5,7 @@ import pickle
 import sys
 from pathlib import Path
 from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, SearchParams
+from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, SearchParams, MinShould
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from dotenv import load_dotenv
@@ -164,16 +164,25 @@ class HybridRetriever:
                     if match_val is not None:
                         must_not_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
             
-            # Construire le filtre avec min_should
-            min_should = filters.get("min_should", 1) if should_conditions else 0
-            
-            if must_conditions or should_conditions or must_not_conditions:
-                return Filter(
-                    must=must_conditions if must_conditions else None,
-                    should=should_conditions if should_conditions else None,
-                    must_not=must_not_conditions if must_not_conditions else None,
-                    min_should=min_should if should_conditions else None
-                )
+            # Construire le filtre avec min_should (objet MinShould, pas int)
+            min_should_val = int(filters.get("min_should", 1) or 1) if should_conditions else 0
+            try:
+                ms = MinShould(min_count=min_should_val) if min_should_val > 0 else None
+                if must_conditions or should_conditions or must_not_conditions:
+                    return Filter(
+                        must=must_conditions if must_conditions else None,
+                        should=should_conditions if should_conditions else None,
+                        must_not=must_not_conditions if must_not_conditions else None,
+                        min_should=ms
+                    )
+            except (TypeError, AttributeError):
+                # Compat ancienne version du client Qdrant qui n'a pas MinShould
+                if must_conditions or should_conditions or must_not_conditions:
+                    return Filter(
+                        must=must_conditions if must_conditions else None,
+                        should=should_conditions if should_conditions else None,
+                        must_not=must_not_conditions if must_not_conditions else None
+                    )
             return None
         
         # Format simple (compatibilité)
