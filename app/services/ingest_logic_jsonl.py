@@ -61,6 +61,30 @@ def _build_doc_from_record(file_name: str, rec: Dict[str, Any]) -> Dict[str, Any
     doc["domain"] = domain
     doc["type"] = typ
     doc["source"] = source
+    
+    # IMPORTANT : Générer un texte de fallback si text est vide
+    if not text or text.strip() == "":
+        # Construire un texte à partir des métadonnées disponibles
+        text_parts = []
+        if rec.get("nom"):
+            text_parts.append(rec["nom"])
+        if rec.get("name"):
+            text_parts.append(rec["name"])
+        if rec.get("title"):
+            text_parts.append(rec["title"])
+        if rec.get("groupe"):
+            text_parts.append(f"Groupe: {rec['groupe']}")
+        if rec.get("objectif"):
+            text_parts.append(f"Objectif: {rec['objectif']}")
+        if rec.get("niveau"):
+            text_parts.append(f"Niveau: {rec['niveau']}")
+        if rec.get("methode"):
+            text_parts.append(f"Méthode: {rec['methode']}")
+        if rec.get("rule_text"):
+            text_parts.append(rec["rule_text"])
+        
+        text = ". ".join(text_parts) if text_parts else f"Document {domain}/{typ}"
+    
     doc["text"] = text  # IMPORTANT : texte passé à l'embedder
 
     # S'assurer que 'domain' est présent dans le payload final (via meta)
@@ -156,12 +180,27 @@ def ingest_logic_and_program_jsonl(
             exo["domain"] = "exercise"
             exo["type"] = "exercise"
             exo["source"] = exo.get("source") or "exercises_json"
-            # Texte pour embedding : description longue ou consignes
-            exo["text"] = (
-                exo.get("description") 
-                or exo.get("consignes") 
-                or exo.get("name", "")
-            )
+            # Texte pour embedding : text (champ principal) ou title comme fallback
+            text = exo.get("text") or exo.get("title", "")
+            
+            # IMPORTANT : Générer un texte de fallback si text est vide
+            if not text or text.strip() == "":
+                # Construire un texte à partir des métadonnées disponibles
+                text_parts = []
+                if exo.get("title"):
+                    text_parts.append(exo["title"])
+                if exo.get("id"):
+                    text_parts.append(f"ID: {exo['id']}")
+                if exo.get("category"):
+                    text_parts.append(f"Catégorie: {exo['category']}")
+                if exo.get("type"):
+                    text_parts.append(f"Type: {exo['type']}")
+                if exo.get("level"):
+                    text_parts.append(f"Niveau: {exo['level']}")
+                
+                text = ". ".join(text_parts) if text_parts else f"Exercice {exo.get('id', 'inconnu')}"
+            
+            exo["text"] = text
             
             # S'assurer que equipment est présent si disponible (clé de filtre)
             if "equipment" not in exo and exo.get("materiel"):
