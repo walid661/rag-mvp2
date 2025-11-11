@@ -19,28 +19,48 @@ from app.services.indexer import DocumentIndexer
 # EXO_NEW_DIR = DATA_ROOT / "exercices_new"
 
 # ============================================================================
-# VERSION V2 : Données enrichies dans data/processed/raw_v2/ (ACTIVÉE)
-# Fallback automatique vers données originales si v2 n'existe pas
+# CONFIGURATION : Définition explicite des sources de données
 # ============================================================================
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 DATA_ROOT_V2 = Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "raw_v2"
 
-# Essayer v2 d'abord, fallback vers original si inexistant
-if (DATA_ROOT_V2 / "logic_jsonl_v2").exists():
-    LOGIC_DIR = DATA_ROOT_V2 / "logic_jsonl_v2"
-    print(f"[ingest] Utilisation données v2 : {LOGIC_DIR}")
-else:
-    LOGIC_DIR = DATA_ROOT / "logic_jsonl"
-    print(f"[ingest] WARN: Données v2 non trouvées, utilisation données originales : {LOGIC_DIR}")
+# Liste explicite des fichiers JSONL à ingérer (dans l'ordre de priorité)
+LOGIC_JSONL_FILES = [
+    "meso_catalog.jsonl",           # Programmes meso-cycles
+    "micro_catalog.jsonl",          # Programmes micro-cycles
+    "macro_to_micro_rules.jsonl",   # Règles macro → micro
+    "generation_spec.jsonl",         # Spécifications de génération
+    "objective_priority.jsonl",      # Priorités d'objectifs
+    "planner_schema.jsonl",          # Schéma du planificateur
+    "muscle_balance_rules.jsonl",    # Règles d'équilibrage musculaire (v2 uniquement)
+    "balanced_session_examples.jsonl", # Exemples de séances équilibrées (v2 uniquement)
+]
 
-if (DATA_ROOT_V2 / "exercices_new_v2").exists():
-    EXO_NEW_DIR = DATA_ROOT_V2 / "exercices_new_v2"
-    print(f"[ingest] Utilisation exercices v2 : {EXO_NEW_DIR}")
-else:
-    EXO_NEW_DIR = DATA_ROOT / "exercices_new"
-    print(f"[ingest] WARN: Exercices v2 non trouvés, utilisation exercices originaux : {EXO_NEW_DIR}")
-
+# Fichiers à ignorer (schémas et exemples non indexables)
 SKIP_FILES = {"planner_examples.jsonl", "user_profile_schema.jsonl"}
+
+# Détermination automatique de la version à utiliser (v2 prioritaire, fallback original)
+USE_V2 = False
+LOGIC_DIR = None
+EXO_NEW_DIR = None
+
+if (DATA_ROOT_V2 / "logic_jsonl_v2").exists() and (DATA_ROOT_V2 / "exercices_new_v2").exists():
+    # VERSION V2 : Données enrichies
+    USE_V2 = True
+    LOGIC_DIR = DATA_ROOT_V2 / "logic_jsonl_v2"
+    EXO_NEW_DIR = DATA_ROOT_V2 / "exercices_new_v2"
+    print(f"[ingest] ===== MODE V2 ACTIVÉ =====")
+    print(f"[ingest] Source règles: {LOGIC_DIR}")
+    print(f"[ingest] Source exercices: {EXO_NEW_DIR}")
+else:
+    # VERSION ORIGINALE : Fallback
+    USE_V2 = False
+    LOGIC_DIR = DATA_ROOT / "logic_jsonl"
+    EXO_NEW_DIR = DATA_ROOT / "exercices_new"
+    print(f"[ingest] ===== MODE ORIGINAL (fallback) =====")
+    print(f"[ingest] WARN: Données v2 non trouvées, utilisation données originales")
+    print(f"[ingest] Source règles: {LOGIC_DIR}")
+    print(f"[ingest] Source exercices: {EXO_NEW_DIR}")
 
 def _read_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
     """Lit un fichier JSONL ligne par ligne."""
@@ -174,28 +194,54 @@ def ingest_logic_and_program_jsonl(
     
     docs: List[Dict[str, Any]] = []
 
-    # 1. Ingestion des JSONL de logic_jsonl/
+    # 1. Ingestion des JSONL de logic_jsonl/ (fichiers explicites uniquement)
     if LOGIC_DIR.exists():
-        for path in sorted(LOGIC_DIR.glob("*.jsonl")):
-            if path.name in SKIP_FILES:
-                print(f"[ingest] Ignoré: {path.name}")
+        print(f"[ingest] === Ingestion des règles et programmes ===")
+        print(f"[ingest] Fichiers attendus: {', '.join(LOGIC_JSONL_FILES)}")
+        
+        files_found = 0
+        files_skipped = 0
+        files_missing = []
+        
+        for file_name in LOGIC_JSONL_FILES:
+            path = LOGIC_DIR / file_name
+            
+            if file_name in SKIP_FILES:
+                print(f"[ingest] ⏭️  Ignoré (SKIP): {file_name}")
+                files_skipped += 1
                 continue
             
-            print(f"[ingest] Lecture de {path.name}...")
+            if not path.exists():
+                if USE_V2 and file_name in ["muscle_balance_rules.jsonl", "balanced_session_examples.jsonl"]:
+                    # Ces fichiers sont optionnels en v2
+                    print(f"[ingest] ⚠️  Optionnel (v2): {file_name} non trouvé")
+                else:
+                    print(f"[ingest] ⚠️  Manquant: {file_name}")
+                    files_missing.append(file_name)
+                continue
+            
+            print(f"[ingest] 📄 Lecture de {file_name}...")
             count = 0
             for rec in _read_jsonl(path):
-                doc = _build_doc_from_record(path.name, rec)
+                doc = _build_doc_from_record(file_name, rec)
                 docs.append(doc)
                 count += 1
-            print(f"[ingest]   {count} documents chargés depuis {path.name}")
+            print(f"[ingest]   ✅ {count} documents chargés depuis {file_name}")
+            files_found += 1
+        
+        print(f"[ingest] Résumé règles: {files_found} fichiers lus, {files_skipped} ignorés, {len(files_missing)} manquants")
+        if files_missing:
+            print(f"[ingest] ⚠️  Fichiers manquants: {', '.join(files_missing)}")
     else:
-        print(f"[ingest] WARN: Dossier {LOGIC_DIR} non trouvé")
+        print(f"[ingest] ❌ ERREUR: Dossier {LOGIC_DIR} non trouvé")
 
-    # 2. Ingestion des exercices depuis exercices_new/
+    # 2. Ingestion des exercices depuis exercices_new/ (tous les .json)
     if EXO_NEW_DIR.exists():
         exo_files = list(EXO_NEW_DIR.glob("*.json"))
         if exo_files:
-            print(f"[ingest] Lecture des exercices depuis {EXO_NEW_DIR} ({len(exo_files)} fichiers)...")
+            print(f"[ingest] === Ingestion des exercices ===")
+            print(f"[ingest] Source: {EXO_NEW_DIR}")
+            print(f"[ingest] Fichiers trouvés: {len(exo_files)} exercices .json")
             exo_count = 0
             for exo_path in sorted(exo_files):
                 try:
@@ -288,15 +334,22 @@ def ingest_logic_and_program_jsonl(
                 docs.append(exo)
                 exo_count += 1
                 if exo_count % 100 == 0:
-                    print(f"[ingest]   {exo_count} exercices chargés...")
-            print(f"[ingest]   Total: {exo_count} exercices chargés depuis {EXO_NEW_DIR}")
+                    print(f"[ingest]   ⏳ {exo_count}/{len(exo_files)} exercices chargés...")
+            print(f"[ingest]   ✅ Total: {exo_count} exercices chargés depuis {EXO_NEW_DIR}")
         else:
-            print(f"[ingest] WARN: Aucun fichier .json trouvé dans {EXO_NEW_DIR}")
+            print(f"[ingest] ⚠️  Aucun fichier .json trouvé dans {EXO_NEW_DIR}")
     else:
-        print(f"[ingest] WARN: Dossier {EXO_NEW_DIR} non trouvé")
+        print(f"[ingest] ❌ ERREUR: Dossier {EXO_NEW_DIR} non trouvé")
 
+    # Résumé final
+    print(f"[ingest] ===== RÉSUMÉ INGESTION =====")
+    print(f"[ingest] Mode: {'V2 (enrichi)' if USE_V2 else 'ORIGINAL (fallback)'}")
+    print(f"[ingest] Total documents préparés: {len(docs)}")
+    print(f"[ingest]   - Règles/Programmes: {len([d for d in docs if d.get('domain') != 'exercise'])}")
+    print(f"[ingest]   - Exercices: {len([d for d in docs if d.get('domain') == 'exercise'])}")
+    
     if not docs:
-        print("[ingest] Aucun document à indexer.")
+        print("[ingest] ❌ ERREUR: Aucun document à indexer.")
         return 0
 
     # 3. Génération des embeddings
