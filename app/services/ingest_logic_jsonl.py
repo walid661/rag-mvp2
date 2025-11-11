@@ -193,96 +193,98 @@ def ingest_logic_and_program_jsonl(
 
     # 2. Ingestion des exercices depuis exercices_new/
     if EXO_NEW_DIR.exists():
-        print(f"[ingest] Lecture des exercices depuis {EXO_NEW_DIR}...")
-        exo_count = 0
-        for exo_path in sorted(EXO_NEW_DIR.glob("*.json")):
-            try:
-                exo = json.loads(exo_path.read_text(encoding="utf-8"))
-            except Exception as e:
-                print(f"[ingest] ERREUR lecture {exo_path.name}: {e}")
-                continue
-            
-            # Mapping exercice nouveau format
-            exo["domain"] = "exercise"
-            exo["type"] = "exercise"
-            exo["source"] = exo.get("source") or "exercices_new"
-            
-            # Texte pour embedding : utiliser le champ text (déjà généré par OpenAI)
-            text = exo.get("text", "")
-            if not text or text.strip() == "":
-                # Fallback : construire depuis les champs disponibles
-                text_parts = []
-                if exo.get("exercise"):
-                    text_parts.append(exo["exercise"])
+        exo_files = list(EXO_NEW_DIR.glob("*.json"))
+        if exo_files:
+            print(f"[ingest] Lecture des exercices depuis {EXO_NEW_DIR} ({len(exo_files)} fichiers)...")
+            exo_count = 0
+            for exo_path in sorted(exo_files):
+                try:
+                    exo = json.loads(exo_path.read_text(encoding="utf-8"))
+                except Exception as e:
+                    print(f"[ingest] ERREUR lecture {exo_path.name}: {e}")
+                    continue
+                
+                # Mapping exercice nouveau format
+                exo["domain"] = "exercise"
+                exo["type"] = "exercise"
+                exo["source"] = exo.get("source") or "exercices_new"
+                
+                # Texte pour embedding : utiliser le champ text (déjà généré par OpenAI)
+                text = exo.get("text", "")
+                if not text or text.strip() == "":
+                    # Fallback : construire depuis les champs disponibles
+                    text_parts = []
+                    if exo.get("exercise"):
+                        text_parts.append(exo["exercise"])
+                    if exo.get("target_muscle_group"):
+                        text_parts.append(f"Muscles ciblés: {exo['target_muscle_group']}")
+                    if exo.get("primary_equipment"):
+                        text_parts.append(f"Équipement: {exo['primary_equipment']}")
+                    text = ". ".join(text_parts) if text_parts else f"Exercice {exo.get('exercise', 'inconnu')}"
+                    exo["text"] = text
+                
+                # IMPORTANT : Extraire tous les champs français pour le payload (filtrage)
+                # Ces champs seront utilisés par rag_router.py pour construire les filtres
+                exo["meta"] = {**exo.get("meta", {}), "domain": "exercise", "type": "exercise"}
+                
+                # Mapper les champs français au niveau racine ET dans meta pour filtrage
+                # Champs principaux pour filtrage :
+                if exo.get("difficulty_level"):
+                    exo["difficulty_level"] = exo["difficulty_level"]  # Français
+                    exo["meta"]["difficulty_level"] = exo["difficulty_level"]
+                    # Compatibilité : aussi mapper vers "niveau" pour compatibilité avec ancien code
+                    exo["niveau"] = exo["difficulty_level"]
+                    exo["meta"]["niveau"] = exo["difficulty_level"]
+                
+                # NOUVEAUX CHAMPS ENRICHIS (v2) : Si disponibles, les ajouter au payload
+                # Ces champs permettront l'équilibrage musculaire et la variété des exercices
+                if exo.get("antagonist_muscle_group"):
+                    exo["antagonist_muscle_group"] = exo["antagonist_muscle_group"]
+                    exo["meta"]["antagonist_muscle_group"] = exo["antagonist_muscle_group"]
+                
+                if exo.get("secondary_muscle_groups"):
+                    exo["secondary_muscle_groups"] = exo["secondary_muscle_groups"]
+                    exo["meta"]["secondary_muscle_groups"] = exo["secondary_muscle_groups"]
+                
+                if exo.get("exercise_family"):
+                    exo["exercise_family"] = exo["exercise_family"]
+                    exo["meta"]["exercise_family"] = exo["exercise_family"]
+                
                 if exo.get("target_muscle_group"):
-                    text_parts.append(f"Muscles ciblés: {exo['target_muscle_group']}")
+                    exo["target_muscle_group"] = exo["target_muscle_group"]  # Français
+                    exo["meta"]["target_muscle_group"] = exo["target_muscle_group"]
+                    # Compatibilité : aussi mapper vers "zone" pour compatibilité
+                    exo["zone"] = exo["target_muscle_group"]
+                    exo["meta"]["zone"] = exo["target_muscle_group"]
+                
                 if exo.get("primary_equipment"):
-                    text_parts.append(f"Équipement: {exo['primary_equipment']}")
-                text = ". ".join(text_parts) if text_parts else f"Exercice {exo.get('exercise', 'inconnu')}"
-                exo["text"] = text
-            
-            # IMPORTANT : Extraire tous les champs français pour le payload (filtrage)
-            # Ces champs seront utilisés par rag_router.py pour construire les filtres
-            exo["meta"] = {**exo.get("meta", {}), "domain": "exercise", "type": "exercise"}
-            
-            # Mapper les champs français au niveau racine ET dans meta pour filtrage
-            # Champs principaux pour filtrage :
-            if exo.get("difficulty_level"):
-                exo["difficulty_level"] = exo["difficulty_level"]  # Français
-                exo["meta"]["difficulty_level"] = exo["difficulty_level"]
-                # Compatibilité : aussi mapper vers "niveau" pour compatibilité avec ancien code
-                exo["niveau"] = exo["difficulty_level"]
-                exo["meta"]["niveau"] = exo["difficulty_level"]
-            
-            # NOUVEAUX CHAMPS ENRICHIS (v2) : Si disponibles, les ajouter au payload
-            # Ces champs permettront l'équilibrage musculaire et la variété des exercices
-            if exo.get("antagonist_muscle_group"):
-                exo["antagonist_muscle_group"] = exo["antagonist_muscle_group"]
-                exo["meta"]["antagonist_muscle_group"] = exo["antagonist_muscle_group"]
-            
-            if exo.get("secondary_muscle_groups"):
-                exo["secondary_muscle_groups"] = exo["secondary_muscle_groups"]
-                exo["meta"]["secondary_muscle_groups"] = exo["secondary_muscle_groups"]
-            
-            if exo.get("exercise_family"):
-                exo["exercise_family"] = exo["exercise_family"]
-                exo["meta"]["exercise_family"] = exo["exercise_family"]
-            
-            if exo.get("target_muscle_group"):
-                exo["target_muscle_group"] = exo["target_muscle_group"]  # Français
-                exo["meta"]["target_muscle_group"] = exo["target_muscle_group"]
-                # Compatibilité : aussi mapper vers "zone" pour compatibilité
-                exo["zone"] = exo["target_muscle_group"]
-                exo["meta"]["zone"] = exo["target_muscle_group"]
-            
-            if exo.get("primary_equipment"):
-                exo["primary_equipment"] = exo["primary_equipment"]  # Français
-                exo["meta"]["primary_equipment"] = exo["primary_equipment"]
-                # Compatibilité : aussi mapper vers "equipment" et "materiel"
-                exo["equipment"] = exo["primary_equipment"]
-                exo["materiel"] = exo["primary_equipment"]
-                exo["meta"]["equipment"] = exo["primary_equipment"]
-                exo["meta"]["materiel"] = exo["primary_equipment"]
-            
-            if exo.get("body_region"):
-                exo["body_region"] = exo["body_region"]
-                exo["meta"]["body_region"] = exo["body_region"]
-            
-            if exo.get("movement_pattern"):
-                exo["movement_pattern"] = exo["movement_pattern"]
-                exo["meta"]["movement_pattern"] = exo["movement_pattern"]
-            
-            if exo.get("mechanics"):
-                exo["mechanics"] = exo["mechanics"]
-                exo["meta"]["mechanics"] = exo["mechanics"]
-            
-            # Tous les autres champs français aussi dans meta pour filtrage avancé
-            for key, value in exo.items():
-                if key.endswith("_en"):
-                    continue  # Ignorer les champs anglais
-                if key not in ["text", "domain", "type", "source", "meta", "embedding"]:
-                    exo["meta"][key] = value
-            
+                    exo["primary_equipment"] = exo["primary_equipment"]  # Français
+                    exo["meta"]["primary_equipment"] = exo["primary_equipment"]
+                    # Compatibilité : aussi mapper vers "equipment" et "materiel"
+                    exo["equipment"] = exo["primary_equipment"]
+                    exo["materiel"] = exo["primary_equipment"]
+                    exo["meta"]["equipment"] = exo["primary_equipment"]
+                    exo["meta"]["materiel"] = exo["primary_equipment"]
+                
+                if exo.get("body_region"):
+                    exo["body_region"] = exo["body_region"]
+                    exo["meta"]["body_region"] = exo["body_region"]
+                
+                if exo.get("movement_pattern"):
+                    exo["movement_pattern"] = exo["movement_pattern"]
+                    exo["meta"]["movement_pattern"] = exo["movement_pattern"]
+                
+                if exo.get("mechanics"):
+                    exo["mechanics"] = exo["mechanics"]
+                    exo["meta"]["mechanics"] = exo["mechanics"]
+                
+                # Tous les autres champs français aussi dans meta pour filtrage avancé
+                for key, value in exo.items():
+                    if key.endswith("_en"):
+                        continue  # Ignorer les champs anglais
+                    if key not in ["text", "domain", "type", "source", "meta", "embedding"]:
+                        exo["meta"][key] = value
+                
                 docs.append(exo)
                 exo_count += 1
                 if exo_count % 100 == 0:
