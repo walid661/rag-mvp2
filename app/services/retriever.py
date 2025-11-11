@@ -150,17 +150,33 @@ class HybridRetriever:
             for cond in filters.get("must", []):
                 if isinstance(cond, dict) and "key" in cond and "match" in cond:
                     key = cond["key"]
-                    match_val = cond["match"].get("value")
-                    if match_val is not None:
-                        must_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
+                    match_dict = cond["match"]
+                    # Support MatchAny pour les listes
+                    if "any" in match_dict:
+                        match_any = match_dict["any"]
+                        if isinstance(match_any, list) and len(match_any) > 0:
+                            must_conditions.append(FieldCondition(key=key, match=MatchAny(any=match_any)))
+                    # Support MatchValue pour les valeurs simples
+                    elif "value" in match_dict:
+                        match_val = match_dict["value"]
+                        if match_val is not None:
+                            must_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
             
             # should
             for cond in filters.get("should", []):
                 if isinstance(cond, dict) and "key" in cond and "match" in cond:
                     key = cond["key"]
-                    match_val = cond["match"].get("value")
-                    if match_val is not None:
-                        should_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
+                    match_dict = cond["match"]
+                    # Support MatchAny pour les listes
+                    if "any" in match_dict:
+                        match_any = match_dict["any"]
+                        if isinstance(match_any, list) and len(match_any) > 0:
+                            should_conditions.append(FieldCondition(key=key, match=MatchAny(any=match_any)))
+                    # Support MatchValue pour les valeurs simples
+                    elif "value" in match_dict:
+                        match_val = match_dict["value"]
+                        if match_val is not None:
+                            should_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
             
             # must_not
             for cond in filters.get("must_not", []):

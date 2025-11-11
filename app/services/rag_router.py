@@ -712,7 +712,8 @@ def build_filters(
         # Mode RAG sémantique pur : pas de filtres restrictifs sur domain/type
         # Laisser l'embedding trouver les meilleurs documents, peu importe leur type
         f = {
-            "should": [],  # Pas de must, seulement des should optionnels
+            "should": [],  # Filtres optionnels pour affiner
+            "must": [],    # Filtres obligatoires pour critères essentiels
             "must_not": []
         }
         
@@ -757,21 +758,46 @@ def build_filters(
                     f["should"].append({"key": "materiel", "match": {"value": eq}})
                 print(f"[MAPPING] filtres équipement={equipment_normalized} (optionnels)")
         
-        # 3. Détection sémantique optionnelle des groupes musculaires depuis la query
+        # 3. Détection sémantique des groupes musculaires depuis la query
+        # IMPORTANT : Si on détecte un groupe musculaire spécifique, le rendre OBLIGATOIRE (must)
         if query:
-            # Bras → Biceps + Triceps
+            # Bras → Biceps + Triceps (OBLIGATOIRE)
             if "bras" in query or ("muscler" in query and "bras" in query):
-                f["should"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
-                f["should"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
-                print(f"[MAPPING] détection 'bras' → filtres Biceps/Triceps (optionnels)")
+                # Utiliser MatchAny pour permettre Biceps OU Triceps
+                f["must"].append({"key": "target_muscle_group", "match": {"any": ["Biceps", "Triceps"]}})
+                print(f"[MAPPING] détection 'bras' → filtre MUST Biceps/Triceps (obligatoire)")
             elif "biceps" in query:
-                f["should"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
-                print(f"[MAPPING] détection 'biceps' → filtre Biceps (optionnel)")
+                f["must"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
+                print(f"[MAPPING] détection 'biceps' → filtre MUST Biceps (obligatoire)")
             elif "triceps" in query:
-                f["should"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
-                print(f"[MAPPING] détection 'triceps' → filtre Triceps (optionnel)")
+                f["must"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
+                print(f"[MAPPING] détection 'triceps' → filtre MUST Triceps (obligatoire)")
             
-            # Zones du corps → body_region (pour exercices)
+            # Autres groupes musculaires spécifiques → must aussi
+            elif "jambes" in query or "cuisses" in query or "quadriceps" in query:
+                muscle_groups = _map_zone_to_muscle_group(query)
+                if len(muscle_groups) > 1:
+                    f["must"].append({"key": "target_muscle_group", "match": {"any": muscle_groups}})
+                else:
+                    f["must"].append({"key": "target_muscle_group", "match": {"value": muscle_groups[0]}})
+                print(f"[MAPPING] détection jambes → filtre MUST {muscle_groups} (obligatoire)")
+            elif "abdos" in query or "abdominaux" in query or ("tronc" in query and "core" not in query):
+                f["must"].append({"key": "target_muscle_group", "match": {"value": "Abdominaux"}})
+                print(f"[MAPPING] détection abdominaux → filtre MUST Abdominaux (obligatoire)")
+            elif "fessiers" in query or "glutes" in query:
+                f["must"].append({"key": "target_muscle_group", "match": {"value": "Fessiers"}})
+                print(f"[MAPPING] détection fessiers → filtre MUST Fessiers (obligatoire)")
+            elif "épaules" in query or "deltoides" in query or "deltoïdes" in query:
+                f["must"].append({"key": "target_muscle_group", "match": {"value": "Épaules"}})
+                print(f"[MAPPING] détection épaules → filtre MUST Épaules (obligatoire)")
+            elif "pectoraux" in query or "pecs" in query:
+                f["must"].append({"key": "target_muscle_group", "match": {"value": "Pectoraux"}})
+                print(f"[MAPPING] détection pectoraux → filtre MUST Pectoraux (obligatoire)")
+            elif "dos" in query and "quadriceps" not in query:  # Éviter conflit avec "dos de la cuisse"
+                f["must"].append({"key": "target_muscle_group", "match": {"value": "Dos"}})
+                print(f"[MAPPING] détection dos → filtre MUST Dos (obligatoire)")
+            
+            # Zones du corps → body_region (should, optionnel)
             if any(kw in query for kw in ["tronc", "midsection", "core", "abdos", "abdominaux"]):
                 f["should"].append({"key": "body_region", "match": {"value": "Tronc"}})
             elif any(kw in query for kw in ["haut du corps", "upper body", "bras", "épaules", "dos", "pectoraux"]):
@@ -779,32 +805,38 @@ def build_filters(
             elif any(kw in query for kw in ["bas du corps", "lower body", "jambes", "cuisses", "fessiers"]):
                 f["should"].append({"key": "body_region", "match": {"value": "Membre inférieur"}})
         
-        # 4. Zones ciblées du profil (optionnel)
-        zones_val = profile.get("zones_ciblees") or extra.get("zones") or extra.get("zone")
-        if zones_val:
-            if isinstance(zones_val, list):
-                muscle_groups = []
-                for zone in zones_val:
-                    mapped = _map_zone_to_muscle_group(zone)
-                    muscle_groups.extend(mapped)
-                muscle_groups = list(set(muscle_groups))
-            else:
-                muscle_groups = list(set(_map_zone_to_muscle_group(str(zones_val))))
-            
-            for mg in muscle_groups:
-                f["should"].append({"key": "target_muscle_group", "match": {"value": mg}})
-            print(f"[MAPPING] zones profil → filtres {muscle_groups} (optionnels)")
+        # 4. Zones ciblées du profil (should, optionnel seulement si pas de must depuis query)
+        if not f["must"]:  # Seulement si on n'a pas déjà de must depuis la query
+            zones_val = profile.get("zones_ciblees") or extra.get("zones") or extra.get("zone")
+            if zones_val:
+                if isinstance(zones_val, list):
+                    muscle_groups = []
+                    for zone in zones_val:
+                        mapped = _map_zone_to_muscle_group(zone)
+                        muscle_groups.extend(mapped)
+                    muscle_groups = list(set(muscle_groups))
+                else:
+                    muscle_groups = list(set(_map_zone_to_muscle_group(str(zones_val))))
+                
+                for mg in muscle_groups:
+                    f["should"].append({"key": "target_muscle_group", "match": {"value": mg}})
+                print(f"[MAPPING] zones profil → filtres {muscle_groups} (optionnels)")
         
-        # Aucun filtre obligatoire : min_should = 0
-        # L'embedding décide quels documents sont les plus pertinents
-        f["min_should"] = 0
+        # min_should = 1 si on a des filtres should, 0 sinon
+        if f["should"]:
+            f["min_should"] = 1
+        else:
+            f["min_should"] = 0
         
-        # Si aucun filtre optionnel, retourner None pour laisser l'embedding chercher librement
-        if not f["should"]:
-            print(f"[MAPPING] Mode auto : aucun filtre, recherche sémantique pure (embedding décide)")
+        # Si on a des must, les garder même si should est vide
+        if f["must"]:
+            print(f"[MAPPING] Mode auto : {len(f['must'])} filtres MUST (obligatoires), {len(f['should'])} filtres should (optionnels)")
+        elif f["should"]:
+            print(f"[MAPPING] Mode auto : {len(f['should'])} filtres should, min_should=1 (au moins 1 doit correspondre)")
+        else:
+            print(f"[MAPPING] Mode auto : aucun filtre, recherche sémantique pure")
             return None
         
-        print(f"[MAPPING] Mode auto : {len(f['should'])} filtres optionnels, min_should=0 (embedding décide)")
         return f
 
     elif stage == "select_meso":
