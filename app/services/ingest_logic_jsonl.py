@@ -20,10 +20,25 @@ from app.services.indexer import DocumentIndexer
 
 # ============================================================================
 # VERSION V2 : Données enrichies dans data/processed/raw_v2/ (ACTIVÉE)
+# Fallback automatique vers données originales si v2 n'existe pas
 # ============================================================================
+DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 DATA_ROOT_V2 = Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "raw_v2"
-LOGIC_DIR = DATA_ROOT_V2 / "logic_jsonl_v2"
-EXO_NEW_DIR = DATA_ROOT_V2 / "exercices_new_v2"
+
+# Essayer v2 d'abord, fallback vers original si inexistant
+if (DATA_ROOT_V2 / "logic_jsonl_v2").exists():
+    LOGIC_DIR = DATA_ROOT_V2 / "logic_jsonl_v2"
+    print(f"[ingest] Utilisation données v2 : {LOGIC_DIR}")
+else:
+    LOGIC_DIR = DATA_ROOT / "logic_jsonl"
+    print(f"[ingest] WARN: Données v2 non trouvées, utilisation données originales : {LOGIC_DIR}")
+
+if (DATA_ROOT_V2 / "exercices_new_v2").exists():
+    EXO_NEW_DIR = DATA_ROOT_V2 / "exercices_new_v2"
+    print(f"[ingest] Utilisation exercices v2 : {EXO_NEW_DIR}")
+else:
+    EXO_NEW_DIR = DATA_ROOT / "exercices_new"
+    print(f"[ingest] WARN: Exercices v2 non trouvés, utilisation exercices originaux : {EXO_NEW_DIR}")
 
 SKIP_FILES = {"planner_examples.jsonl", "user_profile_schema.jsonl"}
 
@@ -268,11 +283,13 @@ def ingest_logic_and_program_jsonl(
                 if key not in ["text", "domain", "type", "source", "meta", "embedding"]:
                     exo["meta"][key] = value
             
-            docs.append(exo)
-            exo_count += 1
-            if exo_count % 100 == 0:
-                print(f"[ingest]   {exo_count} exercices chargés...")
-        print(f"[ingest]   Total: {exo_count} exercices chargés depuis {EXO_NEW_DIR}")
+                docs.append(exo)
+                exo_count += 1
+                if exo_count % 100 == 0:
+                    print(f"[ingest]   {exo_count} exercices chargés...")
+            print(f"[ingest]   Total: {exo_count} exercices chargés depuis {EXO_NEW_DIR}")
+        else:
+            print(f"[ingest] WARN: Aucun fichier .json trouvé dans {EXO_NEW_DIR}")
     else:
         print(f"[ingest] WARN: Dossier {EXO_NEW_DIR} non trouvé")
 
