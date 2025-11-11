@@ -11,9 +11,19 @@ load_dotenv()
 # Import de l'indexer existant
 from app.services.indexer import DocumentIndexer
 
-DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
-LOGIC_DIR = DATA_ROOT / "logic_jsonl"
-EXO_NEW_DIR = DATA_ROOT / "exercices_new"
+# ============================================================================
+# VERSION ORIGINALE : Données dans data/raw/ (commentées pour utiliser v2)
+# ============================================================================
+# DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
+# LOGIC_DIR = DATA_ROOT / "logic_jsonl"
+# EXO_NEW_DIR = DATA_ROOT / "exercices_new"
+
+# ============================================================================
+# VERSION V2 : Données enrichies dans data/processed/raw_v2/ (ACTIVÉE)
+# ============================================================================
+DATA_ROOT_V2 = Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "raw_v2"
+LOGIC_DIR = DATA_ROOT_V2 / "logic_jsonl_v2"
+EXO_NEW_DIR = DATA_ROOT_V2 / "exercices_new_v2"
 
 SKIP_FILES = {"planner_examples.jsonl", "user_profile_schema.jsonl"}
 
@@ -208,6 +218,20 @@ def ingest_logic_and_program_jsonl(
                 # Compatibilité : aussi mapper vers "niveau" pour compatibilité avec ancien code
                 exo["niveau"] = exo["difficulty_level"]
                 exo["meta"]["niveau"] = exo["difficulty_level"]
+            
+            # NOUVEAUX CHAMPS ENRICHIS (v2) : Si disponibles, les ajouter au payload
+            # Ces champs permettront l'équilibrage musculaire et la variété des exercices
+            if exo.get("antagonist_muscle_group"):
+                exo["antagonist_muscle_group"] = exo["antagonist_muscle_group"]
+                exo["meta"]["antagonist_muscle_group"] = exo["antagonist_muscle_group"]
+            
+            if exo.get("secondary_muscle_groups"):
+                exo["secondary_muscle_groups"] = exo["secondary_muscle_groups"]
+                exo["meta"]["secondary_muscle_groups"] = exo["secondary_muscle_groups"]
+            
+            if exo.get("exercise_family"):
+                exo["exercise_family"] = exo["exercise_family"]
+                exo["meta"]["exercise_family"] = exo["exercise_family"]
             
             if exo.get("target_muscle_group"):
                 exo["target_muscle_group"] = exo["target_muscle_group"]  # Français

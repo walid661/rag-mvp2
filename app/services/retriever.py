@@ -517,11 +517,134 @@ class HybridRetriever:
             r = payload_by_id.get(doc_id)
             if not r:
                 continue
-            docs.append({
+            # Construire le document avec tous les champs du payload fusionnés
+            doc = {
                 "id": doc_id,
                 "text": r.payload.get("text", ""),
                 "score": score,
                 "payload": r.payload,
-                "meta": {"sparse_empty": sparse_was_empty}
-            })
+                "meta": {"sparse_empty": sparse_was_empty},
+                **r.payload  # Fusionner tous les champs du payload pour accès direct
+            }
+            docs.append(doc)
+        
+        # NOUVEAU : Équilibrage et variété pour les exercices
+        if docs and any(d.get("domain") == "exercise" and d.get("type") == "exercise" for d in docs):
+            docs = self._balance_and_diversify_exercises(docs, query, top_k)
+        
         return docs
+    
+    def _balance_and_diversify_exercises(self, docs: List[Dict], query: str, top_k: int) -> List[Dict]:
+        """
+        Équilibre les exercices par groupe musculaire (antagonistes) et force la variété des familles.
+        
+        Args:
+            docs: Liste de documents (exercices + autres)
+            query: Requête utilisateur
+            top_k: Nombre maximum de documents à retourner
+        
+        Returns:
+            Liste équilibrée et diversifiée d'exercices + autres documents
+        """
+        exercises = [d for d in docs if d.get("domain") == "exercise" and d.get("type") == "exercise"]
+        other_docs = [d for d in docs if d.get("domain") != "exercise" or d.get("type") != "exercise"]
+        
+        if not exercises:
+            return docs
+        
+        query_lower = query.lower()
+        
+        # Détecter les groupes musculaires demandés et leurs antagonistes
+        muscle_groups_to_balance = []
+        
+        if "bras" in query_lower or ("muscler" in query_lower and "bras" in query_lower):
+            muscle_groups_to_balance = [("Biceps", "Triceps")]
+        elif "biceps" in query_lower:
+            muscle_groups_to_balance = [("Biceps", "Triceps")]
+        elif "triceps" in query_lower:
+            muscle_groups_to_balance = [("Triceps", "Biceps")]
+        elif "jambes" in query_lower or "cuisses" in query_lower:
+            muscle_groups_to_balance = [("Quadriceps", "Ischio-jambiers")]
+        elif "quadriceps" in query_lower:
+            muscle_groups_to_balance = [("Quadriceps", "Ischio-jambiers")]
+        elif "abdos" in query_lower or "abdominaux" in query_lower:
+            muscle_groups_to_balance = [("Abdominaux", "Lombaires")]
+        elif "pectoraux" in query_lower:
+            muscle_groups_to_balance = [("Pectoraux", "Dos")]
+        elif "dos" in query_lower and "quadriceps" not in query_lower:
+            muscle_groups_to_balance = [("Dos", "Pectoraux")]
+        
+        # Équilibrer par groupes musculaires antagonistes
+        balanced_exercises = []
+        primary_count = 0
+        antagonist_count = 0
+        
+        if muscle_groups_to_balance:
+            for primary, antagonist in muscle_groups_to_balance:
+                primary_exercises = [e for e in exercises if e.get("target_muscle_group") == primary]
+                antagonist_exercises = [e for e in exercises if e.get("target_muscle_group") == antagonist]
+                
+                primary_count = len(primary_exercises)
+                antagonist_count = len(antagonist_exercises)
+                
+                # Équilibrer 1:1 (ratio recommandé)
+                max_len = max(len(primary_exercises), len(antagonist_exercises))
+                for i in range(max_len):
+                    if i < len(primary_exercises):
+                        balanced_exercises.append(primary_exercises[i])
+                    if i < len(antagonist_exercises):
+                        balanced_exercises.append(antagonist_exercises[i])
+        else:
+            # Pas de groupes antagonistes détectés, garder les exercices tels quels
+            balanced_exercises = exercises
+        
+        # Forcer la variété des familles d'exercices (max 2 par famille)
+        diversified_exercises = self._enforce_exercise_family_variety(balanced_exercises, max_same_family=2)
+        
+        # Limiter à top_k pour les exercices
+        final_exercises = diversified_exercises[:top_k]
+        
+        # Reconstruire la liste complète avec les autres documents
+        result = other_docs + final_exercises
+        
+        # Trier par score décroissant
+        result.sort(key=lambda x: x.get("score", 0), reverse=True)
+        
+        if muscle_groups_to_balance:
+            print(f"[RETRIEVER] Équilibrage : {primary_count} primaires, {antagonist_count} antagonistes → {len(final_exercises)} exercices équilibrés")
+        
+        return result
+    
+    def _enforce_exercise_family_variety(self, exercises: List[Dict], max_same_family: int = 2) -> List[Dict]:
+        """
+        Force la variété des familles d'exercices (max max_same_family exercices de la même famille).
+        
+        Args:
+            exercises: Liste d'exercices
+            max_same_family: Nombre maximum d'exercices de la même famille
+        
+        Returns:
+            Liste diversifiée d'exercices
+        """
+        families_count = {}
+        diversified = []
+        
+        for exercise in exercises:
+            # Récupérer exercise_family depuis différents emplacements possibles
+            family = (exercise.get("exercise_family") or 
+                     exercise.get("meta", {}).get("exercise_family") or
+                     exercise.get("payload", {}).get("exercise_family") or
+                     "Unknown")
+            count = families_count.get(family, 0)
+            
+            if count < max_same_family:
+                diversified.append(exercise)
+                families_count[family] = count + 1
+            else:
+                exo_name = exercise.get("exercise") or exercise.get("payload", {}).get("exercise", "?")
+                print(f"[RETRIEVER] Exercice '{exo_name}' exclu (famille '{family}' déjà à {max_same_family})")
+        
+        if len(families_count) > 1:
+            print(f"[RETRIEVER] Variété : {len(families_count)} familles différentes ({', '.join(families_count.keys())})")
+        
+        return diversified

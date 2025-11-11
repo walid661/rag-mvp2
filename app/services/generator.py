@@ -31,7 +31,10 @@ __NO_ANSWER__
 Types de documents dans le CONTEXTE
 - Les documents peuvent être de différents types :
   * EXERCICES (domain="exercise", type="exercise") : exercices individuels avec champs :
-    - target_muscle_group (Biceps, Triceps, Épaules, etc.)
+    - target_muscle_group (Biceps, Triceps, Épaules, etc.) : groupe musculaire principal
+    - antagonist_muscle_group (si disponible) : muscle antagoniste (ex: Triceps pour Biceps)
+    - secondary_muscle_groups (si disponible) : muscles secondaires sollicités
+    - exercise_family (si disponible) : famille d'exercice (Curl, Extension, Press, Row, etc.)
     - primary_equipment (Haltère, Barre, Kettlebell, etc.)
     - difficulty_level (Débutant, Novice, Intermédiaire, Avancé)
     - body_region (Membre supérieur, Membre inférieur, Tronc)
@@ -44,8 +47,26 @@ Types de documents dans le CONTEXTE
   * MICRO-CYCLES (domain="program", type="micro_ref") : micro-cycles d'entraînement
 - Si l'utilisateur demande des exercices spécifiques (ex: "muscler mes bras", "exercices pour biceps"), privilégie les documents de type "exercise" et cite les exercices individuels.
 - Si l'utilisateur demande un programme complet, privilégie les documents de type "meso_ref" ou "micro_ref".
-- Utilise les métadonnées (target_muscle_group, groupe, objectif, niveau, primary_equipment) pour adapter ta réponse au profil utilisateur.
+- Utilise les métadonnées (target_muscle_group, antagonist_muscle_group, exercise_family, groupe, objectif, niveau, primary_equipment) pour adapter ta réponse au profil utilisateur.
 - IMPORTANT : Si tu as des documents avec des informations pertinentes (même partielles), tu DOIS construire une réponse adaptée. Ne renvoie __NO_ANSWER__ que si le contexte est vraiment vide ou complètement hors sujet.
+
+Équilibrage musculaire (GÉNÉRIQUE - applique à toutes les zones)
+- Si l'utilisateur demande une zone du corps ou un groupe musculaire, équilibrer automatiquement les muscles antagonistes.
+- Les muscles antagonistes sont ceux qui font des mouvements opposés :
+  * Flexion vs Extension (ex: Biceps vs Triceps, Quadriceps vs Ischio-jambiers)
+  * Poussée vs Tirage (ex: Pectoraux vs Dos, Deltoïdes antérieurs vs Deltoïdes postérieurs)
+  * Extension vs Flexion (ex: Abdominaux vs Lombaires)
+- Pour chaque muscle ciblé, vérifier s'il existe un champ "antagonist_muscle_group" dans les exercices du CONTEXTE.
+- Si un antagoniste est identifié, inclure des exercices pour ce muscle dans la séance.
+- Ratio recommandé : 1:1 pour les antagonistes (même nombre d'exercices pour chaque).
+- Si le CONTEXTE ne contient pas d'exercices pour l'antagoniste, mentionner-le dans la réponse mais construire quand même la séance avec les exercices disponibles.
+
+Variété des exercices (GÉNÉRIQUE)
+- Varier les familles d'exercices dans une séance (Curl, Extension, Press, Row, Squat, Lunge, Deadlift, Pull, Push, etc.).
+- Utiliser le champ "exercise_family" des exercices pour identifier les familles.
+- Éviter de répéter le même type d'exercice (maximum 2 exercices de la même famille par séance).
+- Mélanger exercices d'isolation et composés si possible.
+- Si tous les exercices du CONTEXTE sont de la même famille, mentionner-le mais utiliser quand même les exercices disponibles.
 
 Citations de sources
 - Quand une information provient d'un document, indique la référence sous la forme (Document N).
@@ -66,18 +87,24 @@ Algorithme de réponse (interne)
 1) Lire le PROFIL (niveau, objectif, fréquence, temps, matériel, zones, contraintes).
 2) Analyser le CONTEXTE pour identifier le type de documents (exercices, meso, micro).
 3) Si le CONTEXTE contient principalement des EXERCICES :
-   - Lister les exercices pertinents avec leurs caractéristiques (target_muscle_group, primary_equipment, difficulty_level)
-   - Expliquer comment les réaliser en utilisant le champ "text" de chaque exercice
-   - Adapter au niveau et matériel disponible
-   - Proposer une séance structurée avec ces exercices
+   a) Identifier les groupes musculaires ciblés (target_muscle_group des exercices).
+   b) Vérifier les antagonistes : pour chaque groupe musculaire, chercher "antagonist_muscle_group" dans les exercices.
+   c) Équilibrer la séance : inclure des exercices pour les muscles principaux ET leurs antagonistes (ratio 1:1).
+   d) Varier les familles : utiliser "exercise_family" pour éviter la répétition (max 2 exercices de la même famille).
+   e) Lister les exercices pertinents avec leurs caractéristiques (target_muscle_group, exercise_family, primary_equipment, difficulty_level).
+   f) Expliquer comment les réaliser en utilisant le champ "text" de chaque exercice.
+   g) Adapter au niveau et matériel disponible.
+   h) Proposer une séance structurée avec ces exercices équilibrés.
 4) Si le CONTEXTE contient principalement des PROGRAMMES MESO/MICRO :
    - Utiliser les champs "groupe", "objectif", "niveau", "methode", "variables" pour construire la réponse
    - Construire la séance avec volumes adaptés au niveau, en respectant le temps disponible
+   - Appliquer les règles d'équilibrage musculaire si des exercices sont mentionnés
 5) Si le CONTEXTE est mixte (exercices + programmes) :
    - Privilégier les exercices si la requête demande des exercices spécifiques
    - Utiliser les programmes pour structurer la séance avec les exercices trouvés
+   - Appliquer l'équilibrage musculaire et la variété
 6) Ajouter alternatives si du matériel manque ; proposer variantes poids du corps si nécessaire.
-7) Vérifier cohérence globale (progressivité, équilibres musculaires, repos).
+7) Vérifier cohérence globale (progressivité, équilibres musculaires, variété des familles, repos).
 8) Citer les documents effectivement utilisés au fil des éléments (Document N).
 9) Si le CONTEXTE est VIDE ou complètement hors sujet → __NO_ANSWER__.
    Sinon, utilise les informations disponibles (métadonnées + texte) pour construire une réponse adaptée.
@@ -140,7 +167,7 @@ class RAGGenerator:
             token_count += doc_tokens
         return packed
 
-    def _build_prompt(self, query: str, context: List[Dict], profile: Optional[Dict] = None, is_first_message: bool = False) -> str:
+    def _build_prompt(self, query: str, context: List[Dict], profile: Optional[Dict] = None, is_first_message: bool = False, example_session: Optional[Dict] = None) -> str:
         """
         Construit un prompt structuré et conversationnel.
         
@@ -149,6 +176,7 @@ class RAGGenerator:
             context: Documents récupérés
             profile: Profil utilisateur (optionnel)
             is_first_message: True si c'est le premier message de la session
+            example_session: Exemple de séance équilibrée (optionnel, pour référence)
         """
         # Construire le contexte des documents - concaténer TOUS les documents
         # Utiliser directement doc.get("text") pour s'assurer qu'on utilise tous les documents
@@ -191,14 +219,39 @@ class RAGGenerator:
         if is_first_message:
             greeting = "Bonjour ! Je suis Coach Mike, ravi de vous accompagner dans votre parcours sportif. "
         
+        # NOUVEAU : Ajouter l'exemple de séance équilibrée si disponible
+        example_text = ""
+        if example_session:
+            example_data = example_session.get("example") or example_session.get("payload", {}).get("example", {})
+            if example_data:
+                zone = example_data.get("zone", "")
+                niveau = example_data.get("niveau", "")
+                exercises = example_data.get("exercises", [])
+                balance_explanation = example_data.get("balance_explanation", "")
+                
+                if exercises:
+                    example_exercises = "\n".join([
+                        f"- {ex.get('name', '?')} ({ex.get('target_muscle_group', '?')}, {ex.get('exercise_family', '?')}) : {ex.get('series', '?')} séries × {ex.get('reps', '?')} reps"
+                        for ex in exercises
+                    ])
+                    example_text = f"""
+
+EXEMPLE DE SÉANCE ÉQUILIBRÉE (référence pour {zone}, niveau {niveau}) :
+{example_exercises}
+
+Explication de l'équilibrage : {balance_explanation}
+
+Note : Utilise cet exemple comme référence pour structurer ta séance. Assure-toi d'inclure les muscles antagonistes et de varier les familles d'exercices comme dans cet exemple.
+"""
+        
         # Construire le prompt final - structuré et clair
         # Note: SYSTEM_PROMPT est déjà passé dans le message system, pas besoin de le répéter ici
         prompt = f"""{user_context}Documents pertinents (sélectionnés selon votre profil et votre requête) :
-{context_text}
+{context_text}{example_text}
 
 Question : {query}
 
-Instructions : Ces documents ont été sélectionnés car ils correspondent à votre profil (niveau, objectif, matériel) et à votre requête. Utilise-les pour construire une séance adaptée, même si le texte ne mentionne pas explicitement tous les mots de votre requête. Par exemple, si vous demandez "bras" et qu'un document concerne les "biceps" ou "triceps", utilisez-le pour construire une séance pour les bras.
+Instructions : Ces documents ont été sélectionnés car ils correspondent à votre profil (niveau, objectif, matériel) et à votre requête. Utilise-les pour construire une séance adaptée, même si le texte ne mentionne pas explicitement tous les mots de votre requête. Par exemple, si vous demandez "bras" et qu'un document concerne les "biceps" ou "triceps", utilisez-le pour construire une séance pour les bras.{' L\'exemple de séance ci-dessus montre comment équilibrer les muscles antagonistes et varier les familles d\'exercices.' if example_text else ''}
 
 Coach Mike :"""
         
@@ -206,7 +259,7 @@ Coach Mike :"""
         
         return prompt
 
-    def generate(self, query: str, retrieved_docs: List[Dict], profile: Optional[Dict] = None, is_first_message: bool = False) -> Dict:
+    def generate(self, query: str, retrieved_docs: List[Dict], profile: Optional[Dict] = None, is_first_message: bool = False, example_session: Optional[Dict] = None) -> Dict:
         """
         Génère une réponse conversationnelle basée sur les documents récupérés.
         
@@ -215,6 +268,7 @@ Coach Mike :"""
             retrieved_docs: Documents récupérés par le retriever
             profile: Profil utilisateur (optionnel, pour personnalisation)
             is_first_message: True si c'est le premier message de la session
+            example_session: Exemple de séance équilibrée (optionnel, pour référence)
         
         Returns:
             Dict avec 'answer', 'sources', 'context_used'
@@ -292,7 +346,7 @@ Coach Mike :"""
             print(f"    Texte: {preview}")
         
         # Construire le prompt structuré
-        prompt = self._build_prompt(query, context, profile=profile, is_first_message=is_first_message)
+        prompt = self._build_prompt(query, context, profile=profile, is_first_message=is_first_message, example_session=example_session)
         
         # Générer la réponse avec le SYSTEM_PROMPT bienveillant
         # Utiliser les paramètres du .env : LLM_TEMPERATURE, OPENAI_MAX_TOKENS, LLM_MODEL

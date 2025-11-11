@@ -650,6 +650,45 @@ def _normalize_materiel(materiel: Any) -> List[str]:
     
     return list(set(normalized))  # Dédupliquer
 
+def _get_antagonist_muscle_group(muscle_group: str) -> Optional[str]:
+    """
+    Retourne le muscle antagoniste d'un groupe musculaire donné.
+    Utilise les paires antagonistes connues (alignées avec muscle_balance_rules.jsonl).
+    
+    Args:
+        muscle_group: Groupe musculaire (ex: "Biceps", "Quadriceps")
+    
+    Returns:
+        Muscle antagoniste ou None si aucun antagoniste connu
+    """
+    muscle_lower = muscle_group.lower()
+    
+    # Paires antagonistes (alignées avec muscle_balance_rules.jsonl)
+    antagonist_pairs = {
+        "biceps": "Triceps",
+        "triceps": "Biceps",
+        "quadriceps": "Ischio-jambiers",
+        "ischio-jambiers": "Quadriceps",
+        "ischio": "Quadriceps",
+        "pectoraux": "Dos",
+        "dos": "Pectoraux",
+        "épaules": "Dos",  # Épaules → Dos (antagoniste général)
+        "abdominaux": "Lombaires",
+        "abdos": "Lombaires",
+        "lombaires": "Abdominaux",
+        "fessiers": "Psoas",
+        "psoas": "Fessiers",
+        "deltoïdes antérieurs": "Deltoïdes postérieurs",
+        "deltoïdes postérieurs": "Deltoïdes antérieurs",
+    }
+    
+    # Chercher une correspondance (exacte ou partielle)
+    for key, antagonist in antagonist_pairs.items():
+        if key in muscle_lower or muscle_lower in key:
+            return antagonist
+    
+    return None
+
 def _map_zone_to_muscle_group(zone: str) -> List[str]:
     """
     Mappe une zone du corps vers les groupes musculaires français des nouveaux exercices.
@@ -760,42 +799,86 @@ def build_filters(
         
         # 3. Détection sémantique des groupes musculaires depuis la query
         # IMPORTANT : Si on détecte un groupe musculaire spécifique, le rendre OBLIGATOIRE (must)
+        # AMÉLIORATION : Utiliser _get_antagonist_muscle_group() pour équilibrer automatiquement
         if query:
+            query_lower = query.lower()
+            
             # Bras → Biceps + Triceps (OBLIGATOIRE)
-            if "bras" in query or ("muscler" in query and "bras" in query):
+            if "bras" in query_lower or ("muscler" in query_lower and "bras" in query_lower):
                 # Utiliser MatchAny pour permettre Biceps OU Triceps
                 f["must"].append({"key": "target_muscle_group", "match": {"any": ["Biceps", "Triceps"]}})
                 print(f"[MAPPING] détection 'bras' → filtre MUST Biceps/Triceps (obligatoire)")
-            elif "biceps" in query:
-                f["must"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
-                print(f"[MAPPING] détection 'biceps' → filtre MUST Biceps (obligatoire)")
-            elif "triceps" in query:
-                f["must"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
-                print(f"[MAPPING] détection 'triceps' → filtre MUST Triceps (obligatoire)")
+            elif "biceps" in query_lower:
+                # AMÉLIORATION : Inclure aussi l'antagoniste (Triceps) pour équilibrage
+                antagonist = _get_antagonist_muscle_group("Biceps")
+                if antagonist:
+                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Biceps", antagonist]}})
+                    print(f"[MAPPING] détection 'biceps' → filtre MUST Biceps/{antagonist} (obligatoire, équilibré)")
+                else:
+                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
+                    print(f"[MAPPING] détection 'biceps' → filtre MUST Biceps (obligatoire)")
+            elif "triceps" in query_lower:
+                # AMÉLIORATION : Inclure aussi l'antagoniste (Biceps) pour équilibrage
+                antagonist = _get_antagonist_muscle_group("Triceps")
+                if antagonist:
+                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Triceps", antagonist]}})
+                    print(f"[MAPPING] détection 'triceps' → filtre MUST Triceps/{antagonist} (obligatoire, équilibré)")
+                else:
+                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
+                    print(f"[MAPPING] détection 'triceps' → filtre MUST Triceps (obligatoire)")
             
             # Autres groupes musculaires spécifiques → must aussi
-            elif "jambes" in query or "cuisses" in query or "quadriceps" in query:
+            # AMÉLIORATION : Inclure automatiquement les antagonistes pour équilibrage
+            elif "jambes" in query_lower or "cuisses" in query_lower or "quadriceps" in query_lower:
                 muscle_groups = _map_zone_to_muscle_group(query)
+                # Pour jambes/cuisses, inclure Quadriceps ET Ischio-jambiers (antagonistes)
+                if "quadriceps" in query_lower:
+                    antagonist = _get_antagonist_muscle_group("Quadriceps")
+                    if antagonist and antagonist not in muscle_groups:
+                        muscle_groups.append(antagonist)
+                elif "ischio" in query_lower:
+                    antagonist = _get_antagonist_muscle_group("Ischio-jambiers")
+                    if antagonist and antagonist not in muscle_groups:
+                        muscle_groups.append(antagonist)
+                
                 if len(muscle_groups) > 1:
                     f["must"].append({"key": "target_muscle_group", "match": {"any": muscle_groups}})
                 else:
                     f["must"].append({"key": "target_muscle_group", "match": {"value": muscle_groups[0]}})
                 print(f"[MAPPING] détection jambes → filtre MUST {muscle_groups} (obligatoire)")
-            elif "abdos" in query or "abdominaux" in query or ("tronc" in query and "core" not in query):
-                f["must"].append({"key": "target_muscle_group", "match": {"value": "Abdominaux"}})
-                print(f"[MAPPING] détection abdominaux → filtre MUST Abdominaux (obligatoire)")
-            elif "fessiers" in query or "glutes" in query:
+            elif "abdos" in query_lower or "abdominaux" in query_lower or ("tronc" in query_lower and "core" not in query_lower):
+                # AMÉLIORATION : Inclure aussi Lombaires (antagoniste)
+                antagonist = _get_antagonist_muscle_group("Abdominaux")
+                if antagonist:
+                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Abdominaux", antagonist]}})
+                    print(f"[MAPPING] détection abdominaux → filtre MUST Abdominaux/{antagonist} (obligatoire, équilibré)")
+                else:
+                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Abdominaux"}})
+                    print(f"[MAPPING] détection abdominaux → filtre MUST Abdominaux (obligatoire)")
+            elif "fessiers" in query_lower or "glutes" in query_lower:
                 f["must"].append({"key": "target_muscle_group", "match": {"value": "Fessiers"}})
                 print(f"[MAPPING] détection fessiers → filtre MUST Fessiers (obligatoire)")
-            elif "épaules" in query or "deltoides" in query or "deltoïdes" in query:
+            elif "épaules" in query_lower or "deltoides" in query_lower or "deltoïdes" in query_lower:
                 f["must"].append({"key": "target_muscle_group", "match": {"value": "Épaules"}})
                 print(f"[MAPPING] détection épaules → filtre MUST Épaules (obligatoire)")
-            elif "pectoraux" in query or "pecs" in query:
-                f["must"].append({"key": "target_muscle_group", "match": {"value": "Pectoraux"}})
-                print(f"[MAPPING] détection pectoraux → filtre MUST Pectoraux (obligatoire)")
-            elif "dos" in query and "quadriceps" not in query:  # Éviter conflit avec "dos de la cuisse"
-                f["must"].append({"key": "target_muscle_group", "match": {"value": "Dos"}})
-                print(f"[MAPPING] détection dos → filtre MUST Dos (obligatoire)")
+            elif "pectoraux" in query_lower or "pecs" in query_lower:
+                # AMÉLIORATION : Inclure aussi Dos (antagoniste)
+                antagonist = _get_antagonist_muscle_group("Pectoraux")
+                if antagonist:
+                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Pectoraux", antagonist]}})
+                    print(f"[MAPPING] détection pectoraux → filtre MUST Pectoraux/{antagonist} (obligatoire, équilibré)")
+                else:
+                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Pectoraux"}})
+                    print(f"[MAPPING] détection pectoraux → filtre MUST Pectoraux (obligatoire)")
+            elif "dos" in query_lower and "quadriceps" not in query_lower:  # Éviter conflit avec "dos de la cuisse"
+                # AMÉLIORATION : Inclure aussi Pectoraux (antagoniste)
+                antagonist = _get_antagonist_muscle_group("Dos")
+                if antagonist:
+                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Dos", antagonist]}})
+                    print(f"[MAPPING] détection dos → filtre MUST Dos/{antagonist} (obligatoire, équilibré)")
+                else:
+                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Dos"}})
+                    print(f"[MAPPING] détection dos → filtre MUST Dos (obligatoire)")
             
             # Zones du corps → body_region (should, optionnel)
             if any(kw in query for kw in ["tronc", "midsection", "core", "abdos", "abdominaux"]):

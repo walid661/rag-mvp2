@@ -342,8 +342,61 @@ async def chat_with_coach(
             retrieved_docs = retriever.retrieve(full_query, top_k=3, filters=soft_filters if soft_filters else None)
             print(f"[CHAT] Documents trouvés (filtres souples): {len(retrieved_docs)}")
 
+        # 5.5. NOUVEAU : Rechercher un exemple de séance équilibrée si pertinent
+        # Détecter la zone et le niveau depuis la query et le profil
+        example_session = None
+        if retrieved_docs and any(d.get("domain") == "exercise" for d in retrieved_docs):
+            query_lower = query.lower()
+            detected_zone = None
+            niveau = profile.get("niveau_sportif", "Débutant")
+            
+            # Détecter la zone depuis la query
+            if "bras" in query_lower:
+                detected_zone = "bras"
+            elif "jambes" in query_lower or "cuisses" in query_lower:
+                detected_zone = "jambes"
+            elif "haut du corps" in query_lower:
+                detected_zone = "haut du corps"
+            elif "bas du corps" in query_lower:
+                detected_zone = "bas du corps"
+            elif "tronc" in query_lower or "abdos" in query_lower:
+                detected_zone = "tronc"
+            elif "dos" in query_lower:
+                detected_zone = "dos"
+            elif "épaules" in query_lower:
+                detected_zone = "épaules"
+            
+            # Normaliser le niveau
+            niveau_normalized = niveau.capitalize() if niveau else "Débutant"
+            if niveau_normalized not in ["Débutant", "Intermédiaire", "Avancé"]:
+                niveau_normalized = "Débutant"
+            
+            # Rechercher un exemple si zone détectée
+            if detected_zone:
+                example_filters = {
+                    "domain": "logic",
+                    "type": "balanced_session_example",
+                    "zone": detected_zone,
+                    "niveau": niveau_normalized
+                }
+                example_results = retriever.retrieve(
+                    query=f"séance équilibrée {detected_zone} {niveau_normalized}",
+                    top_k=1,
+                    filters=example_filters
+                )
+                if example_results:
+                    example_session = example_results[0]
+                    print(f"[CHAT] Exemple de séance équilibrée trouvé : {detected_zone} ({niveau_normalized})")
+
         # 6. Utiliser le generator avec le profil pour un contexte enrichi
-        result = generator.generate(full_query, retrieved_docs, profile=profile.dict(), is_first_message=is_first_message)
+        # Passer l'exemple de séance si disponible
+        result = generator.generate(
+            full_query, 
+            retrieved_docs, 
+            profile=profile.dict(), 
+            is_first_message=is_first_message,
+            example_session=example_session  # NOUVEAU : passer l'exemple
+        )
         
         # Gérer NO_ANSWER : ne rien afficher si réponse insuffisante
         ans = (result or {}).get("answer", "")
