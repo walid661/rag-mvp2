@@ -316,18 +316,12 @@ async def chat_with_coach(
         print(f"[CHAT] Profil mappé (query-aware): {rag_filters_profile}")
         
         # 4. Utiliser le rag_router.py pour construire les filtres
-        # Détection intelligente du stage selon la requête
-        query_lower = query.lower()
-        if any(kw in query_lower for kw in ["exercice", "exercices", "mouvement", "mouvements"]):
-            stage = "pick_exercises"
-        elif any(kw in query_lower for kw in ["micro", "microcycle", "micro-cycle"]):
-            stage = "select_micro_patterns"
-        elif any(kw in query_lower for kw in ["règle", "règles", "logique", "comment"]):
-            stage = "micro_generation_rules"
-        else:
-            stage = "select_meso"  # Par défaut
+        # Mode RAG sémantique : laisser l'embedding décider du type de document le plus pertinent
+        # Pas de détection hardcodée par mots-clés, l'embedding trouve automatiquement les meilleurs documents
+        stage = "auto"  # Mode automatique : recherche sémantique dans tous les types de documents
         
         # `build_filters` utilise le profil enrichi avec valeurs multiples + query pour intentions
+        # Les filtres sont permissifs (should) pour affiner sans restreindre
         filters = build_filters(stage=stage, profile=rag_filters_profile, extra={"query": query})
         print(f"[CHAT] Filtres RAG appliqués: {filters}")
 

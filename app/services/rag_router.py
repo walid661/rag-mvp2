@@ -708,7 +708,106 @@ def build_filters(
     extra = extra or {}
     f: Dict[str, Any] = {}
 
-    if stage == "select_meso":
+    if stage == "auto":
+        # Mode RAG sémantique pur : pas de filtres restrictifs sur domain/type
+        # Laisser l'embedding trouver les meilleurs documents, peu importe leur type
+        f = {
+            "should": [],  # Pas de must, seulement des should optionnels
+            "must_not": []
+        }
+        
+        query = extra.get("query", "").lower() if extra else ""
+        
+        # Filtres d'affinage optionnels (should) pour aider sans restreindre
+        # 1. Niveau / Difficulty level
+        if profile:
+            niveau_val = _normalize_profile_key("niveau_sportif", profile) or _normalize_profile_key("niveau", profile)
+            if niveau_val:
+                niveau_norm = _normalize_niveau(str(niveau_val))
+                # Pour les meso/micro
+                f["should"].append({"key": "niveau", "match": {"value": niveau_norm}})
+                # Pour les exercices (mapping vers difficulty_level)
+                difficulty_mapping = {
+                    "débutant": "Débutant",
+                    "intermédiaire": "Intermédiaire",
+                    "avancé": "Avancé",
+                    "expert": "Expert"
+                }
+                difficulty = difficulty_mapping.get(niveau_norm.lower(), niveau_norm)
+                f["should"].append({"key": "difficulty_level", "match": {"value": difficulty}})
+                print(f"[MAPPING] filtre niveau={niveau_norm} (optionnel)")
+            
+            # 2. Équipement (optionnel)
+            equipment_val = _normalize_profile_key("equipment", profile) or _normalize_profile_key("materiel", profile) or _normalize_profile_key("matériel", profile)
+            if equipment_val:
+                if isinstance(equipment_val, list):
+                    equipment_normalized = []
+                    for eq in equipment_val:
+                        normalized = _normalize_materiel(eq)
+                        equipment_normalized.extend(normalized)
+                    equipment_normalized = list(set(equipment_normalized))
+                else:
+                    equipment_normalized = list(set(_normalize_materiel(equipment_val)))
+                
+                for eq in equipment_normalized:
+                    # Pour les exercices (nouveau format)
+                    f["should"].append({"key": "primary_equipment", "match": {"value": eq}})
+                    # Pour compatibilité (ancien format)
+                    f["should"].append({"key": "equipment", "match": {"value": eq}})
+                    f["should"].append({"key": "materiel", "match": {"value": eq}})
+                print(f"[MAPPING] filtres équipement={equipment_normalized} (optionnels)")
+        
+        # 3. Détection sémantique optionnelle des groupes musculaires depuis la query
+        if query:
+            # Bras → Biceps + Triceps
+            if "bras" in query or ("muscler" in query and "bras" in query):
+                f["should"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
+                f["should"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
+                print(f"[MAPPING] détection 'bras' → filtres Biceps/Triceps (optionnels)")
+            elif "biceps" in query:
+                f["should"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
+                print(f"[MAPPING] détection 'biceps' → filtre Biceps (optionnel)")
+            elif "triceps" in query:
+                f["should"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
+                print(f"[MAPPING] détection 'triceps' → filtre Triceps (optionnel)")
+            
+            # Zones du corps → body_region (pour exercices)
+            if any(kw in query for kw in ["tronc", "midsection", "core", "abdos", "abdominaux"]):
+                f["should"].append({"key": "body_region", "match": {"value": "Tronc"}})
+            elif any(kw in query for kw in ["haut du corps", "upper body", "bras", "épaules", "dos", "pectoraux"]):
+                f["should"].append({"key": "body_region", "match": {"value": "Membre supérieur"}})
+            elif any(kw in query for kw in ["bas du corps", "lower body", "jambes", "cuisses", "fessiers"]):
+                f["should"].append({"key": "body_region", "match": {"value": "Membre inférieur"}})
+        
+        # 4. Zones ciblées du profil (optionnel)
+        zones_val = profile.get("zones_ciblees") or extra.get("zones") or extra.get("zone")
+        if zones_val:
+            if isinstance(zones_val, list):
+                muscle_groups = []
+                for zone in zones_val:
+                    mapped = _map_zone_to_muscle_group(zone)
+                    muscle_groups.extend(mapped)
+                muscle_groups = list(set(muscle_groups))
+            else:
+                muscle_groups = list(set(_map_zone_to_muscle_group(str(zones_val))))
+            
+            for mg in muscle_groups:
+                f["should"].append({"key": "target_muscle_group", "match": {"value": mg}})
+            print(f"[MAPPING] zones profil → filtres {muscle_groups} (optionnels)")
+        
+        # Aucun filtre obligatoire : min_should = 0
+        # L'embedding décide quels documents sont les plus pertinents
+        f["min_should"] = 0
+        
+        # Si aucun filtre optionnel, retourner None pour laisser l'embedding chercher librement
+        if not f["should"]:
+            print(f"[MAPPING] Mode auto : aucun filtre, recherche sémantique pure (embedding décide)")
+            return None
+        
+        print(f"[MAPPING] Mode auto : {len(f['should'])} filtres optionnels, min_should=0 (embedding décide)")
+        return f
+
+    elif stage == "select_meso":
         # Filtres souples avec must + should + min_should
         f = {
             "must": [
