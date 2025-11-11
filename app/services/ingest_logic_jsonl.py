@@ -13,7 +13,7 @@ from app.services.indexer import DocumentIndexer
 
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "raw"
 LOGIC_DIR = DATA_ROOT / "logic_jsonl"
-EXO_DIR = DATA_ROOT / "exercises_json"
+EXO_NEW_DIR = DATA_ROOT / "exercices_new"
 
 SKIP_FILES = {"planner_examples.jsonl", "user_profile_schema.jsonl"}
 
@@ -166,56 +166,91 @@ def ingest_logic_and_program_jsonl(
     else:
         print(f"[ingest] WARN: Dossier {LOGIC_DIR} non trouvé")
 
-    # 2. Optionnel : exercices (si on veut aussi les recharger ici)
-    if EXO_DIR.exists():
-        print(f"[ingest] Lecture des exercices depuis {EXO_DIR}...")
+    # 2. Ingestion des exercices depuis exercices_new/
+    if EXO_NEW_DIR.exists():
+        print(f"[ingest] Lecture des exercices depuis {EXO_NEW_DIR}...")
         exo_count = 0
-        for exo_path in sorted(EXO_DIR.glob("*.json")):
+        for exo_path in sorted(EXO_NEW_DIR.glob("*.json")):
             try:
                 exo = json.loads(exo_path.read_text(encoding="utf-8"))
             except Exception as e:
+                print(f"[ingest] ERREUR lecture {exo_path.name}: {e}")
                 continue
             
-            # Mapping exercice
+            # Mapping exercice nouveau format
             exo["domain"] = "exercise"
             exo["type"] = "exercise"
-            exo["source"] = exo.get("source") or "exercises_json"
-            # Texte pour embedding : text (champ principal) ou title comme fallback
-            text = exo.get("text") or exo.get("title", "")
+            exo["source"] = exo.get("source") or "exercices_new"
             
-            # IMPORTANT : Générer un texte de fallback si text est vide
+            # Texte pour embedding : utiliser le champ text (déjà généré par OpenAI)
+            text = exo.get("text", "")
             if not text or text.strip() == "":
-                # Construire un texte à partir des métadonnées disponibles
+                # Fallback : construire depuis les champs disponibles
                 text_parts = []
-                if exo.get("title"):
-                    text_parts.append(exo["title"])
-                if exo.get("id"):
-                    text_parts.append(f"ID: {exo['id']}")
-                if exo.get("category"):
-                    text_parts.append(f"Catégorie: {exo['category']}")
-                if exo.get("type"):
-                    text_parts.append(f"Type: {exo['type']}")
-                if exo.get("level"):
-                    text_parts.append(f"Niveau: {exo['level']}")
-                
-                text = ". ".join(text_parts) if text_parts else f"Exercice {exo.get('id', 'inconnu')}"
+                if exo.get("exercise"):
+                    text_parts.append(exo["exercise"])
+                if exo.get("target_muscle_group"):
+                    text_parts.append(f"Muscles ciblés: {exo['target_muscle_group']}")
+                if exo.get("primary_equipment"):
+                    text_parts.append(f"Équipement: {exo['primary_equipment']}")
+                text = ". ".join(text_parts) if text_parts else f"Exercice {exo.get('exercise', 'inconnu')}"
+                exo["text"] = text
             
-            exo["text"] = text
-            
-            # S'assurer que equipment est présent si disponible (clé de filtre)
-            if "equipment" not in exo and exo.get("materiel"):
-                exo["equipment"] = exo["materiel"]
-            
-            # Mettre domain dans meta pour le payload
+            # IMPORTANT : Extraire tous les champs français pour le payload (filtrage)
+            # Ces champs seront utilisés par rag_router.py pour construire les filtres
             exo["meta"] = {**exo.get("meta", {}), "domain": "exercise", "type": "exercise"}
+            
+            # Mapper les champs français au niveau racine ET dans meta pour filtrage
+            # Champs principaux pour filtrage :
+            if exo.get("difficulty_level"):
+                exo["difficulty_level"] = exo["difficulty_level"]  # Français
+                exo["meta"]["difficulty_level"] = exo["difficulty_level"]
+                # Compatibilité : aussi mapper vers "niveau" pour compatibilité avec ancien code
+                exo["niveau"] = exo["difficulty_level"]
+                exo["meta"]["niveau"] = exo["difficulty_level"]
+            
+            if exo.get("target_muscle_group"):
+                exo["target_muscle_group"] = exo["target_muscle_group"]  # Français
+                exo["meta"]["target_muscle_group"] = exo["target_muscle_group"]
+                # Compatibilité : aussi mapper vers "zone" pour compatibilité
+                exo["zone"] = exo["target_muscle_group"]
+                exo["meta"]["zone"] = exo["target_muscle_group"]
+            
+            if exo.get("primary_equipment"):
+                exo["primary_equipment"] = exo["primary_equipment"]  # Français
+                exo["meta"]["primary_equipment"] = exo["primary_equipment"]
+                # Compatibilité : aussi mapper vers "equipment" et "materiel"
+                exo["equipment"] = exo["primary_equipment"]
+                exo["materiel"] = exo["primary_equipment"]
+                exo["meta"]["equipment"] = exo["primary_equipment"]
+                exo["meta"]["materiel"] = exo["primary_equipment"]
+            
+            if exo.get("body_region"):
+                exo["body_region"] = exo["body_region"]
+                exo["meta"]["body_region"] = exo["body_region"]
+            
+            if exo.get("movement_pattern"):
+                exo["movement_pattern"] = exo["movement_pattern"]
+                exo["meta"]["movement_pattern"] = exo["movement_pattern"]
+            
+            if exo.get("mechanics"):
+                exo["mechanics"] = exo["mechanics"]
+                exo["meta"]["mechanics"] = exo["mechanics"]
+            
+            # Tous les autres champs français aussi dans meta pour filtrage avancé
+            for key, value in exo.items():
+                if key.endswith("_en"):
+                    continue  # Ignorer les champs anglais
+                if key not in ["text", "domain", "type", "source", "meta", "embedding"]:
+                    exo["meta"][key] = value
             
             docs.append(exo)
             exo_count += 1
             if exo_count % 100 == 0:
                 print(f"[ingest]   {exo_count} exercices chargés...")
-        print(f"[ingest]   Total: {exo_count} exercices chargés")
+        print(f"[ingest]   Total: {exo_count} exercices chargés depuis {EXO_NEW_DIR}")
     else:
-        print(f"[ingest] WARN: Dossier {EXO_DIR} non trouvé")
+        print(f"[ingest] WARN: Dossier {EXO_NEW_DIR} non trouvé")
 
     if not docs:
         print("[ingest] Aucun document à indexer.")

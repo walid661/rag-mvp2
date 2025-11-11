@@ -606,7 +606,8 @@ def _normalize_profile_key(key: str, profile: Dict[str, Any]) -> Any:
 
 def _normalize_materiel(materiel: Any) -> List[str]:
     """
-    Normalise le matériel utilisateur vers les valeurs attendues dans les documents.
+    Normalise le matériel utilisateur vers les valeurs françaises attendues dans les nouveaux exercices.
+    Retourne les valeurs françaises correspondantes pour filtrage dans Qdrant.
     """
     if not materiel:
         return []
@@ -620,24 +621,67 @@ def _normalize_materiel(materiel: Any) -> List[str]:
     for m in materiel_list:
         m_lower = str(m).lower().strip()
         
-        # Mapping exhaustif
-        if any(kw in m_lower for kw in ["barre", "rack", "machine", "machines", "full gym", "full_gym"]):
-            normalized.append("full_gym")
+        # Mapping vers les valeurs françaises des nouveaux exercices
+        if any(kw in m_lower for kw in ["barre", "barbell", "rack", "machine", "machines", "full gym", "full_gym"]):
+            normalized.append("Barre")  # Valeur française dans les exercices
         elif any(kw in m_lower for kw in ["haltère", "haltères", "dumbbell", "dumbbells"]):
-            normalized.append("dumbbell")
+            normalized.append("Haltère")  # Valeur française dans les exercices
         elif any(kw in m_lower for kw in ["kettlebell", "kb"]):
-            normalized.append("kettlebell")
-        elif any(kw in m_lower for kw in ["élastique", "élastiques", "band", "bands", "bande", "bandes"]):
-            normalized.append("bands")
+            normalized.append("Kettlebell")  # Même valeur en français et anglais
+        elif any(kw in m_lower for kw in ["câble", "cable"]):
+            normalized.append("Câble")  # Valeur française dans les exercices
+        elif any(kw in m_lower for kw in ["élastique", "élastiques", "band", "bands", "bande", "bandes", "miniband"]):
+            normalized.append("Élastique")  # Valeur française approximative
         elif any(kw in m_lower for kw in ["aucun", "poids du corps", "bodyweight", "sans matériel", "sans materiel"]):
-            normalized.append("none")
+            normalized.append("Poids du corps")  # Valeur française dans les exercices
         elif any(kw in m_lower for kw in ["tapis", "mat", "matelas"]):
-            normalized.append("mat")
+            normalized.append("Tapis")  # Valeur française approximative
+        elif any(kw in m_lower for kw in ["balle", "stability ball", "ball"]):
+            normalized.append("Balle de stabilité")  # Valeur française dans les exercices
+        elif any(kw in m_lower for kw in ["disque", "plate", "weight plate"]):
+            normalized.append("Disque de poids")  # Valeur française dans les exercices
+        elif any(kw in m_lower for kw in ["sandbag", "sac", "sable"]):
+            normalized.append("Sandbag")  # Même valeur en français et anglais
+        elif any(kw in m_lower for kw in ["suspension", "trx", "anneaux", "ring"]):
+            normalized.append("Suspension")  # Valeur française approximative
         else:
-            # Par défaut, garder la valeur originale
-            normalized.append(m_lower)
+            # Par défaut, garder la valeur originale (capitalisée pour correspondre au format français)
+            normalized.append(str(m).capitalize())
     
     return list(set(normalized))  # Dédupliquer
+
+def _map_zone_to_muscle_group(zone: str) -> List[str]:
+    """
+    Mappe une zone du corps vers les groupes musculaires français des nouveaux exercices.
+    """
+    zone_lower = zone.lower()
+    mapping = {
+        "bras": ["Biceps", "Triceps", "Avant-bras"],
+        "biceps": ["Biceps"],
+        "triceps": ["Triceps"],
+        "épaules": ["Épaules", "Deltoïdes"],
+        "pectoraux": ["Pectoraux", "Poitrine"],
+        "dos": ["Dos", "Lombaires", "Trapèzes", "Rhomboides"],
+        "abdominaux": ["Abdominaux", "Core"],
+        "abdos": ["Abdominaux", "Core"],
+        "tronc": ["Abdominaux", "Core", "Lombaires"],
+        "jambes": ["Quadriceps", "Ischio-jambiers", "Mollets"],
+        "cuisses": ["Quadriceps", "Ischio-jambiers"],
+        "quadriceps": ["Quadriceps"],
+        "ischio": ["Ischio-jambiers"],
+        "fessiers": ["Fessiers", "Glutes"],
+        "mollets": ["Mollets"],
+        "haut du corps": ["Biceps", "Triceps", "Épaules", "Pectoraux", "Dos"],
+        "bas du corps": ["Quadriceps", "Ischio-jambiers", "Fessiers", "Mollets"],
+    }
+    
+    # Chercher une correspondance exacte ou partielle
+    for key, values in mapping.items():
+        if key in zone_lower:
+            return values
+    
+    # Par défaut, retourner la zone telle quelle (si elle correspond déjà à un groupe)
+    return [zone]
 
 # ============================================================================
 # FONCTION PRINCIPALE : build_filters
@@ -839,22 +883,75 @@ def build_filters(
     
     elif stage == "pick_exercises":
         f.update({"domain": "exercise", "type": "exercise"})
-        # Normalisation des clés alternatives (equipment, materiel, matériel)
-        # Support multi-valeurs : equipment peut être une liste
+        
+        # NOUVEAU : Utiliser les champs français des nouveaux exercices
+        # Support multi-valeurs pour l'équipement
         equipment_val = _normalize_profile_key("equipment", profile) or _normalize_profile_key("materiel", profile) or _normalize_profile_key("matériel", profile)
         if equipment_val:
-            # Si c'est une liste, la garder telle quelle, sinon convertir en liste
+            # Normaliser les valeurs d'équipement vers les valeurs françaises
             if isinstance(equipment_val, list):
-                f["equipment"] = equipment_val
+                equipment_normalized = []
+                for eq in equipment_val:
+                    normalized = _normalize_materiel(eq)
+                    equipment_normalized.extend(normalized)
+                f["primary_equipment"] = list(set(equipment_normalized))  # Dédupliquer
             else:
-                f["equipment"] = [str(equipment_val)]
-        # Support multi-valeurs pour les zones
+                normalized = _normalize_materiel(equipment_val)
+                f["primary_equipment"] = list(set(normalized))
+            # Compatibilité : aussi mettre dans equipment pour anciens exercices
+            f["equipment"] = f["primary_equipment"]
+        
+        # NOUVEAU : Utiliser target_muscle_group (français) au lieu de zone
         zones_val = profile.get("zones_ciblees") or extra.get("zones") or extra.get("zone")
         if zones_val:
             if isinstance(zones_val, list):
-                f["zone"] = zones_val  # Support multi-valeurs
+                # Mapper les zones vers les groupes musculaires français
+                muscle_groups = []
+                for zone in zones_val:
+                    # Mapping zones → groupes musculaires (ex: "Bras" → "Biceps", "Triceps")
+                    mapped = _map_zone_to_muscle_group(zone)
+                    muscle_groups.extend(mapped)
+                f["target_muscle_group"] = list(set(muscle_groups))
             else:
-                f["zone"] = [str(zones_val)]
+                mapped = _map_zone_to_muscle_group(str(zones_val))
+                f["target_muscle_group"] = list(set(mapped))
+            # Compatibilité : aussi mettre dans zone pour anciens exercices
+            f["zone"] = f["target_muscle_group"]
+        
+        # NOUVEAU : Utiliser difficulty_level (français) au lieu de niveau
+        niveau_val = _normalize_profile_key("niveau_sportif", profile) or _normalize_profile_key("niveau", profile)
+        if niveau_val:
+            niveau_norm = _normalize_niveau(str(niveau_val))
+            # Mapping vers les valeurs françaises des nouveaux exercices
+            difficulty_mapping = {
+                "débutant": "Débutant",
+                "intermédiaire": "Intermédiaire",
+                "avancé": "Avancé",
+                "expert": "Expert"
+            }
+            difficulty = difficulty_mapping.get(niveau_norm.lower(), niveau_norm)
+            f["difficulty_level"] = difficulty
+            # Compatibilité : aussi mettre dans niveau
+            f["niveau"] = difficulty
+        
+        # NOUVEAU : Filtrer par body_region si disponible dans la query
+        query = extra.get("query", "").lower() if extra else ""
+        if any(kw in query for kw in ["tronc", "midsection", "core", "abdos", "abdominaux"]):
+            f["body_region"] = "Tronc"
+        elif any(kw in query for kw in ["haut du corps", "upper body", "bras", "épaules", "dos"]):
+            f["body_region"] = "Membre supérieur"
+        elif any(kw in query for kw in ["bas du corps", "lower body", "jambes", "cuisses"]):
+            f["body_region"] = "Membre inférieur"
+        
+        # NOUVEAU : Filtrer par movement_pattern si détecté dans la query
+        if any(kw in query for kw in ["anti-extension", "anti extension"]):
+            f["movement_pattern"] = "Anti-extension"
+        elif any(kw in query for kw in ["flexion", "squat"]):
+            f["movement_pattern"] = "Squat"
+        elif any(kw in query for kw in ["traction", "row", "pull"]):
+            f["movement_pattern"] = "Pull"
+        elif any(kw in query for kw in ["poussée", "push", "press"]):
+            f["movement_pattern"] = "Push"
     
     else:
         # Généralisation : si stage inconnu, construire un filtre minimal basé sur extra
