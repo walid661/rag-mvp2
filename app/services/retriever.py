@@ -341,7 +341,17 @@ class HybridRetriever:
         query_vector = self._embed(query)
         max_docs_limit = int(os.getenv("MAX_DOCS", MAX_DOCS))
         
-        print(f"[RETRIEVER] Recherche dense avec limit={max_docs_limit}, score_threshold=0.05")
+        # AMÉLIORATION : Logging amélioré pour diagnostic
+        if qdrant_filter:
+            must_count = len(qdrant_filter.must) if qdrant_filter.must else 0
+            should_count = len(qdrant_filter.should) if qdrant_filter.should else 0
+            min_should_val = getattr(qdrant_filter, 'min_should', None)
+            if isinstance(min_should_val, object) and hasattr(min_should_val, 'min_count'):
+                min_should_val = min_should_val.min_count
+            print(f"[RETRIEVER] Recherche dense avec limit={max_docs_limit}, score_threshold=0.05")
+            print(f"[RETRIEVER] Filtres appliqués: {must_count} must, {should_count} should, min_should={min_should_val}")
+        else:
+            print(f"[RETRIEVER] Recherche dense avec limit={max_docs_limit}, score_threshold=0.05 (sans filtres)")
         dense_results = self.qdrant.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
@@ -351,17 +361,38 @@ class HybridRetriever:
             search_params=SearchParams(hnsw_ef=int(os.getenv("HNSW_EF", "128")))
         )
         
-        # Fallback automatique : si moins de 3 résultats, relancer sans filtres
+        # AMÉLIORATION : Stratégie de filtrage progressive (cascade de fallback)
+        # 1. Essayer avec tous les filtres
+        # 2. Si < 3 résultats, retirer les filtres should (garder seulement must)
+        # 3. Si toujours < 3, retirer tous les filtres
         if not dense_results or len(dense_results) < 3:
-            print(f"[RETRIEVER] Peu de résultats ({len(dense_results)}), fallback sans filtres.")
-            dense_results = self.qdrant.search(
-                collection_name=self.collection_name,
-                query_vector=query_vector,
-                limit=max_docs_limit,
-                score_threshold=0.02,  # Encore plus permissif pour le fallback
-                with_payload=True,
-            )
-            print(f"[RETRIEVER] Fallback : {len(dense_results)} documents trouvés sans filtres")
+            print(f"[RETRIEVER] Peu de résultats ({len(dense_results)}), stratégie de fallback progressive...")
+            
+            # Étape 2 : Retirer les filtres should, garder seulement must
+            if qdrant_filter and qdrant_filter.must:
+                print(f"[RETRIEVER] Fallback étape 1 : retirer filtres should, garder must uniquement")
+                fallback_filter = Filter(must=qdrant_filter.must, must_not=qdrant_filter.must_not)
+                dense_results = self.qdrant.search(
+                    collection_name=self.collection_name,
+                    query_vector=query_vector,
+                    query_filter=fallback_filter,
+                    limit=max_docs_limit,
+                    score_threshold=0.03,
+                    search_params=SearchParams(hnsw_ef=int(os.getenv("HNSW_EF", "128")))
+                )
+                print(f"[RETRIEVER] Fallback étape 1 : {len(dense_results)} documents trouvés (filtres must uniquement)")
+            
+            # Étape 3 : Si toujours < 3, retirer tous les filtres
+            if not dense_results or len(dense_results) < 3:
+                print(f"[RETRIEVER] Fallback étape 2 : retirer tous les filtres (recherche purement sémantique)")
+                dense_results = self.qdrant.search(
+                    collection_name=self.collection_name,
+                    query_vector=query_vector,
+                    limit=max_docs_limit,
+                    score_threshold=0.02,  # Encore plus permissif pour le fallback
+                    with_payload=True,
+                )
+                print(f"[RETRIEVER] Fallback étape 2 : {len(dense_results)} documents trouvés sans filtres")
         
         # Sparse BM25 results avec expansion sémantique
         bm25_query = query

@@ -689,9 +689,36 @@ def _get_antagonist_muscle_group(muscle_group: str) -> Optional[str]:
     
     return None
 
+def _fuzzy_match_muscle_group(query: str, target: str, threshold: float = 0.7) -> bool:
+    """
+    Détection floue pour gérer les typos (ex: "quadricpes" → "quadriceps").
+    Utilise une correspondance simple basée sur la similarité de caractères.
+    """
+    query_lower = query.lower().replace(" ", "")
+    target_lower = target.lower().replace(" ", "")
+    
+    # Correspondance exacte
+    if query_lower == target_lower:
+        return True
+    
+    # Correspondance partielle (substring)
+    if query_lower in target_lower or target_lower in query_lower:
+        return True
+    
+    # Similarité simple : compter les caractères communs
+    common_chars = sum(1 for c in query_lower if c in target_lower)
+    max_len = max(len(query_lower), len(target_lower))
+    if max_len > 0:
+        similarity = common_chars / max_len
+        if similarity >= threshold:
+            return True
+    
+    return False
+
 def _map_zone_to_muscle_group(zone: str) -> List[str]:
     """
     Mappe une zone du corps vers les groupes musculaires français des nouveaux exercices.
+    Supporte la détection floue pour gérer les typos.
     """
     zone_lower = zone.lower()
     mapping = {
@@ -707,7 +734,9 @@ def _map_zone_to_muscle_group(zone: str) -> List[str]:
         "jambes": ["Quadriceps", "Ischio-jambiers", "Mollets"],
         "cuisses": ["Quadriceps", "Ischio-jambiers"],
         "quadriceps": ["Quadriceps"],
+        "quadricpes": ["Quadriceps"],  # Typo commune
         "ischio": ["Ischio-jambiers"],
+        "ischio-jambiers": ["Ischio-jambiers"],
         "fessiers": ["Fessiers", "Glutes"],
         "mollets": ["Mollets"],
         "haut du corps": ["Biceps", "Triceps", "Épaules", "Pectoraux", "Dos"],
@@ -717,6 +746,12 @@ def _map_zone_to_muscle_group(zone: str) -> List[str]:
     # Chercher une correspondance exacte ou partielle
     for key, values in mapping.items():
         if key in zone_lower:
+            return values
+    
+    # Détection floue pour typos (ex: "quadricpes")
+    for key, values in mapping.items():
+        if _fuzzy_match_muscle_group(zone, key, threshold=0.7):
+            print(f"[MAPPING] Détection floue '{zone}' → '{key}' → {values}")
             return values
     
     # Par défaut, retourner la zone telle quelle (si elle correspond déjà à un groupe)
@@ -764,10 +799,11 @@ def build_filters(
             "planning", "plan d'entraînement", "programme d'entraînement", "4 semaines", "3 semaines"
         ])
         
-        # Si c'est une requête de programme, privilégier les documents de type program
+        # AMÉLIORATION : Rendre domain=program obligatoire (must) pour les requêtes de programme
+        # Cela garantit qu'on trouve des programmes et pas des exercices
         if is_program_request:
-            f["should"].append({"key": "domain", "match": {"value": "program"}})
-            print(f"[MAPPING] Détection requête 'programme' → filtre should domain=program")
+            f["must"].append({"key": "domain", "match": {"value": "program"}})
+            print(f"[MAPPING] Détection requête 'programme' → filtre MUST domain=program (obligatoire)")
         
         # Filtres d'affinage optionnels (should) pour aider sans restreindre
         # 1. Niveau / Difficulty level
@@ -840,7 +876,8 @@ def build_filters(
             
             # Autres groupes musculaires spécifiques → must aussi
             # AMÉLIORATION : Inclure automatiquement les antagonistes pour équilibrage
-            elif "jambes" in query_lower or "cuisses" in query_lower or "quadriceps" in query_lower:
+            # AMÉLIORATION : Support détection floue pour typos (ex: "quadricpes")
+            elif any(kw in query_lower for kw in ["jambes", "cuisses", "quadriceps", "quadricpes"]):
                 muscle_groups = _map_zone_to_muscle_group(query)
                 # Pour jambes/cuisses, inclure Quadriceps ET Ischio-jambiers (antagonistes)
                 if "quadriceps" in query_lower:
@@ -939,8 +976,14 @@ def build_filters(
                         f["should"].append({"key": "groupe", "match": {"any": ["Tonification & Renforcement", "Reconditionnement général", "Hypertrophie"]}})
                         print(f"[MAPPING] zone 'Full body' → filtres body_region/groupe (optionnels)")
         
-        # min_should = 1 si on a des filtres should, 0 sinon
-        if f["should"]:
+        # AMÉLIORATION : Stratégie de filtrage progressive
+        # Si on a des filtres must, on peut être plus permissif sur should
+        # Si on a seulement des should, on exige au moins 1 correspondance
+        if f["must"]:
+            # Avec des must, les should sont vraiment optionnels (boost seulement)
+            f["min_should"] = 0
+        elif f["should"]:
+            # Sans must, exiger au moins 1 should (mais on aura un fallback progressif)
             f["min_should"] = 1
         else:
             f["min_should"] = 0

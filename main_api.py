@@ -333,13 +333,47 @@ async def chat_with_coach(
         if len(retrieved_docs) < 3:
             print(f"[WARN] Contexte pauvre : moins de 3 documents ({len(retrieved_docs)}).")
 
-        # Fallback : si aucun document trouvé, réessayer sans filtres stricts
+        # AMÉLIORATION : Fallback amélioré - extraction correcte de domain/type depuis format must/should
         if not retrieved_docs:
             print("[CHAT] Aucun document avec filtres stricts, réessai avec filtres souples...")
-            # Réessayer avec seulement domain et type
-            soft_filters = {"domain": filters.get("domain"), "type": filters.get("type")}
-            soft_filters = {k: v for k, v in soft_filters.items() if v}
-            retrieved_docs = retriever.retrieve(full_query, top_k=3, filters=soft_filters if soft_filters else None)
+            # Extraire domain et type depuis le format must/should
+            domain_val = None
+            type_val = None
+            
+            # Chercher dans must
+            for cond in filters.get("must", []):
+                if isinstance(cond, dict) and cond.get("key") == "domain":
+                    domain_val = cond.get("match", {}).get("value")
+                elif isinstance(cond, dict) and cond.get("key") == "type":
+                    type_val = cond.get("match", {}).get("value")
+            
+            # Chercher dans should si pas trouvé dans must
+            if not domain_val:
+                for cond in filters.get("should", []):
+                    if isinstance(cond, dict) and cond.get("key") == "domain":
+                        domain_val = cond.get("match", {}).get("value")
+                        break
+            
+            if not type_val:
+                for cond in filters.get("should", []):
+                    if isinstance(cond, dict) and cond.get("key") == "type":
+                        type_val = cond.get("match", {}).get("value")
+                        break
+            
+            # Construire filtres souples seulement si on a trouvé domain ou type
+            soft_filters = {}
+            if domain_val:
+                soft_filters["domain"] = domain_val
+            if type_val:
+                soft_filters["type"] = type_val
+            
+            if soft_filters:
+                print(f"[CHAT] Filtres souples extraits: {soft_filters}")
+                retrieved_docs = retriever.retrieve(full_query, top_k=5, filters=soft_filters)
+            else:
+                print("[CHAT] Aucun filtre domain/type trouvé, recherche sans filtres")
+                retrieved_docs = retriever.retrieve(full_query, top_k=5, filters=None)
+            
             print(f"[CHAT] Documents trouvés (filtres souples): {len(retrieved_docs)}")
 
         # 5.5. NOUVEAU : Rechercher un exemple de séance équilibrée si pertinent
