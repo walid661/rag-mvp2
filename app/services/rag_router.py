@@ -758,6 +758,17 @@ def build_filters(
         
         query = extra.get("query", "").lower() if extra else ""
         
+        # Détection du type de requête : programme vs exercices
+        is_program_request = any(kw in query for kw in [
+            "programme", "plan", "semaine", "semaines", "cycle", "meso", "micro",
+            "planning", "plan d'entraînement", "programme d'entraînement", "4 semaines", "3 semaines"
+        ])
+        
+        # Si c'est une requête de programme, privilégier les documents de type program
+        if is_program_request:
+            f["should"].append({"key": "domain", "match": {"value": "program"}})
+            print(f"[MAPPING] Détection requête 'programme' → filtre should domain=program")
+        
         # Filtres d'affinage optionnels (should) pour aider sans restreindre
         # 1. Niveau / Difficulty level
         if profile:
@@ -893,17 +904,40 @@ def build_filters(
             zones_val = profile.get("zones_ciblees") or extra.get("zones") or extra.get("zone")
             if zones_val:
                 if isinstance(zones_val, list):
-                    muscle_groups = []
-                    for zone in zones_val:
-                        mapped = _map_zone_to_muscle_group(zone)
-                        muscle_groups.extend(mapped)
-                    muscle_groups = list(set(muscle_groups))
+                    # NE PAS mapper "Full body" vers target_muscle_group pour les exercices
+                    # "Full body" est une zone, pas un groupe musculaire
+                    filtered_zones = [z for z in zones_val if z.lower() != "full body"]
+                    
+                    if filtered_zones:  # Si on a d'autres zones que "Full body"
+                        muscle_groups = []
+                        for zone in filtered_zones:
+                            mapped = _map_zone_to_muscle_group(zone)
+                            muscle_groups.extend(mapped)
+                        muscle_groups = list(set(muscle_groups))
+                        
+                        for mg in muscle_groups:
+                            f["should"].append({"key": "target_muscle_group", "match": {"value": mg}})
+                        print(f"[MAPPING] zones profil → filtres {muscle_groups} (optionnels)")
+                    
+                    # Si "Full body" est présent, utiliser body_region ou groupe pour programmes
+                    if "Full body" in zones_val or "full body" in [z.lower() for z in zones_val]:
+                        # Pour les exercices : utiliser body_region (optionnel)
+                        f["should"].append({"key": "body_region", "match": {"any": ["Membre supérieur", "Membre inférieur", "Tronc"]}})
+                        # Pour les programmes : utiliser groupe (optionnel)
+                        f["should"].append({"key": "groupe", "match": {"any": ["Tonification & Renforcement", "Reconditionnement général", "Hypertrophie"]}})
+                        print(f"[MAPPING] zone 'Full body' → filtres body_region/groupe (optionnels)")
                 else:
-                    muscle_groups = list(set(_map_zone_to_muscle_group(str(zones_val))))
-                
-                for mg in muscle_groups:
-                    f["should"].append({"key": "target_muscle_group", "match": {"value": mg}})
-                print(f"[MAPPING] zones profil → filtres {muscle_groups} (optionnels)")
+                    zone_str = str(zones_val)
+                    if zone_str.lower() != "full body":
+                        muscle_groups = list(set(_map_zone_to_muscle_group(zone_str)))
+                        for mg in muscle_groups:
+                            f["should"].append({"key": "target_muscle_group", "match": {"value": mg}})
+                        print(f"[MAPPING] zones profil → filtres {muscle_groups} (optionnels)")
+                    else:
+                        # "Full body" seul : utiliser body_region/groupe
+                        f["should"].append({"key": "body_region", "match": {"any": ["Membre supérieur", "Membre inférieur", "Tronc"]}})
+                        f["should"].append({"key": "groupe", "match": {"any": ["Tonification & Renforcement", "Reconditionnement général", "Hypertrophie"]}})
+                        print(f"[MAPPING] zone 'Full body' → filtres body_region/groupe (optionnels)")
         
         # min_should = 1 si on a des filtres should, 0 sinon
         if f["should"]:
