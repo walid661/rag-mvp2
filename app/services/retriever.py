@@ -406,23 +406,72 @@ class HybridRetriever:
                 print(f"[RETRIEVER] BM25 expansion: {len(expansions)} termes ajoutés")
         sparse_results = self._bm25_search(bm25_query, top_k * 2)
         sparse_was_empty = (len(sparse_results) == 0)
+        
+        # AMÉLIORATION : Filtrer BM25 avec support du format must/should
         if filters:
-            # Filter BM25 results via payload_cache (0 requête Qdrant)
-            # Support multi-valeurs : si filtre est une liste, utiliser MatchAny
             filtered_sparse = []
             for doc_id, score in sparse_results:
                 p = self.payload_cache.get(doc_id, {})
                 ok = True
-                for key, val in filters.items():
-                    if isinstance(val, list):
-                        # Support multi-valeurs : le document doit correspondre à au moins une valeur
-                        if p.get(key) not in val:
+                
+                # Support format must/should
+                if isinstance(filters, dict) and ("must" in filters or "should" in filters):
+                    # Vérifier must (obligatoire)
+                    for cond in filters.get("must", []):
+                        if isinstance(cond, dict) and "key" in cond and "match" in cond:
+                            key = cond["key"]
+                            match_dict = cond["match"]
+                            doc_val = p.get(key)
+                            
+                            if "any" in match_dict:
+                                # MatchAny : doc_val doit être dans la liste
+                                if doc_val not in match_dict["any"]:
+                                    ok = False
+                                    break
+                            elif "value" in match_dict:
+                                # MatchValue : correspondance exacte
+                                if doc_val != match_dict["value"]:
+                                    ok = False
+                                    break
+                    
+                    if not ok:
+                        continue
+                    
+                    # Vérifier should (au moins 1 doit correspondre si min_should > 0)
+                    should_matches = 0
+                    min_should = filters.get("min_should", 0)
+                    if min_should > 0:
+                        for cond in filters.get("should", []):
+                            if isinstance(cond, dict) and "key" in cond and "match" in cond:
+                                key = cond["key"]
+                                match_dict = cond["match"]
+                                doc_val = p.get(key)
+                                
+                                matched = False
+                                if "any" in match_dict:
+                                    if doc_val in match_dict["any"]:
+                                        matched = True
+                                elif "value" in match_dict:
+                                    if doc_val == match_dict["value"]:
+                                        matched = True
+                                
+                                if matched:
+                                    should_matches += 1
+                        
+                        if should_matches < min_should:
                             ok = False
-                            break
-                    else:
-                        if p.get(key) != val:
-                            ok = False
-                            break
+                else:
+                    # Format simple (compatibilité)
+                    for key, val in filters.items():
+                        if isinstance(val, list):
+                            if p.get(key) not in val:
+                                ok = False
+                                break
+                        else:
+                            if p.get(key) != val:
+                                ok = False
+                                break
+                
                 if ok:
                     filtered_sparse.append((doc_id, score))
             sparse_results = filtered_sparse[:top_k * 2]
