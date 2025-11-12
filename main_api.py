@@ -348,7 +348,7 @@ async def chat_with_coach(
         if retrieved_docs and any(d.get("domain") == "exercise" for d in retrieved_docs):
             query_lower = query.lower()
             detected_zone = None
-            niveau = profile.get("niveau_sportif", "Débutant")
+            niveau = getattr(profile, "niveau_sportif", None) or "Débutant"
             
             # Détecter la zone depuis la query
             if "bras" in query_lower:
