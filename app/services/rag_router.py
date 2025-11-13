@@ -720,8 +720,14 @@ def _map_zone_to_muscle_group(zone: str) -> List[str]:
     Mappe une zone du corps vers les groupes musculaires français des nouveaux exercices.
     Supporte la détection floue pour gérer les typos.
     """
-    zone_lower = zone.lower()
+    zone_lower = zone.lower().strip()
     mapping = {
+        # Zones anatomiques explicites (priorité haute)
+        "membre supérieur": ["Biceps", "Triceps", "Épaules", "Pectoraux", "Dos"],
+        "membre inférieur": ["Quadriceps", "Ischio-jambiers", "Fessiers", "Mollets"],
+        "haut du corps": ["Biceps", "Triceps", "Épaules", "Pectoraux", "Dos"],
+        "bas du corps": ["Quadriceps", "Ischio-jambiers", "Fessiers", "Mollets"],
+        # Groupes musculaires spécifiques
         "bras": ["Biceps", "Triceps", "Avant-bras"],
         "biceps": ["Biceps"],
         "triceps": ["Triceps"],
@@ -739,20 +745,23 @@ def _map_zone_to_muscle_group(zone: str) -> List[str]:
         "ischio-jambiers": ["Ischio-jambiers"],
         "fessiers": ["Fessiers", "Glutes"],
         "mollets": ["Mollets"],
-        "haut du corps": ["Biceps", "Triceps", "Épaules", "Pectoraux", "Dos"],
-        "bas du corps": ["Quadriceps", "Ischio-jambiers", "Fessiers", "Mollets"],
     }
     
-    # Chercher une correspondance exacte ou partielle
+    # CORRECTION : Chercher d'abord une correspondance exacte (priorité)
+    # Éviter les mauvais mappings avec détection floue
     for key, values in mapping.items():
-        if key in zone_lower:
+        if key == zone_lower or key in zone_lower or zone_lower in key:
             return values
     
-    # Détection floue pour typos (ex: "quadricpes")
-    for key, values in mapping.items():
-        if _fuzzy_match_muscle_group(zone, key, threshold=0.7):
-            print(f"[MAPPING] Détection floue '{zone}' → '{key}' → {values}")
-            return values
+    # Détection floue UNIQUEMENT pour typos de groupes musculaires spécifiques
+    # NE PAS utiliser pour les zones anatomiques générales (risque de mauvais mapping)
+    # Liste des zones qui peuvent bénéficier de détection floue (typos uniquement)
+    fuzzy_allowed = ["quadriceps", "quadricpes", "ischio", "biceps", "triceps", "pectoraux", "abdominaux"]
+    if any(allowed in zone_lower for allowed in fuzzy_allowed):
+        for key, values in mapping.items():
+            if key in fuzzy_allowed and _fuzzy_match_muscle_group(zone, key, threshold=0.7):
+                print(f"[MAPPING] Détection floue '{zone}' → '{key}' → {values}")
+                return values
     
     # Par défaut, retourner la zone telle quelle (si elle correspond déjà à un groupe)
     return [zone]

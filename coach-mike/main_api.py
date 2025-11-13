@@ -231,6 +231,13 @@ async def chat_with_coach(
         # 3. Utiliser le retriever
         retrieved_docs = retriever.retrieve(query, top_k=5, filters=filters)
         print(f"[CHAT] Documents trouvés: {len(retrieved_docs)}")
+        
+        # Log des scores pour diagnostic
+        if retrieved_docs:
+            scores = [f"{doc.get('score', 0.0):.3f}" for doc in retrieved_docs]
+            top_score = retrieved_docs[0].get('score', 0.0) if retrieved_docs else 0.0
+            print(f"[CHAT] Scores des documents: {scores}")
+            print(f"[CHAT] Top score: {top_score:.3f}")
 
         if not retrieved_docs:
             answer = "Je n'ai pas trouvé de programme correspondant exactement à vos critères. Essayez de reformuler votre demande ou d'ajuster votre profil (par exemple, en changeant l'équipement ou l'objectif)."
@@ -238,6 +245,8 @@ async def chat_with_coach(
             return ChatResponse(answer=answer, sources=[])
 
         # 4. Utiliser le generator
+        # CORRECTION : Ne pas rejeter basé sur les scores RRF (qui sont naturellement faibles)
+        # Laisser le LLM décider si le contexte est suffisant
         result = generator.generate(query, retrieved_docs)
         print("[CHAT] Réponse générée avec succès")
         
