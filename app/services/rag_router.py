@@ -845,34 +845,34 @@ def build_filters(
                 print(f"[MAPPING] filtres équipement={equipment_normalized} (optionnels)")
         
         # 3. Détection sémantique des groupes musculaires depuis la query
-        # IMPORTANT : Si on détecte un groupe musculaire spécifique, le rendre OBLIGATOIRE (must)
+        # SOLUTION 1 : Les filtres sont maintenant SHOULD (optionnels) pour ne pas bloquer la recherche sémantique
         # AMÉLIORATION : Utiliser _get_antagonist_muscle_group() pour équilibrer automatiquement
         if query:
             query_lower = query.lower()
             
-            # Bras → Biceps + Triceps (OBLIGATOIRE)
+            # Bras → Biceps + Triceps (OPTIONNEL - boost sémantique)
             if "bras" in query_lower or ("muscler" in query_lower and "bras" in query_lower):
                 # Utiliser MatchAny pour permettre Biceps OU Triceps
-                f["must"].append({"key": "target_muscle_group", "match": {"any": ["Biceps", "Triceps"]}})
-                print(f"[MAPPING] détection 'bras' → filtre MUST Biceps/Triceps (obligatoire)")
+                f["should"].append({"key": "target_muscle_group", "match": {"any": ["Biceps", "Triceps"]}})
+                print(f"[MAPPING] détection 'bras' → filtre SHOULD Biceps/Triceps (optionnel, boost)")
             elif "biceps" in query_lower:
                 # AMÉLIORATION : Inclure aussi l'antagoniste (Triceps) pour équilibrage
                 antagonist = _get_antagonist_muscle_group("Biceps")
                 if antagonist:
-                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Biceps", antagonist]}})
-                    print(f"[MAPPING] détection 'biceps' → filtre MUST Biceps/{antagonist} (obligatoire, équilibré)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"any": ["Biceps", antagonist]}})
+                    print(f"[MAPPING] détection 'biceps' → filtre SHOULD Biceps/{antagonist} (optionnel, boost)")
                 else:
-                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
-                    print(f"[MAPPING] détection 'biceps' → filtre MUST Biceps (obligatoire)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"value": "Biceps"}})
+                    print(f"[MAPPING] détection 'biceps' → filtre SHOULD Biceps (optionnel, boost)")
             elif "triceps" in query_lower:
                 # AMÉLIORATION : Inclure aussi l'antagoniste (Biceps) pour équilibrage
                 antagonist = _get_antagonist_muscle_group("Triceps")
                 if antagonist:
-                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Triceps", antagonist]}})
-                    print(f"[MAPPING] détection 'triceps' → filtre MUST Triceps/{antagonist} (obligatoire, équilibré)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"any": ["Triceps", antagonist]}})
+                    print(f"[MAPPING] détection 'triceps' → filtre SHOULD Triceps/{antagonist} (optionnel, boost)")
                 else:
-                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
-                    print(f"[MAPPING] détection 'triceps' → filtre MUST Triceps (obligatoire)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"value": "Triceps"}})
+                    print(f"[MAPPING] détection 'triceps' → filtre SHOULD Triceps (optionnel, boost)")
             
             # Autres groupes musculaires spécifiques → must aussi
             # AMÉLIORATION : Inclure automatiquement les antagonistes pour équilibrage
@@ -890,43 +890,43 @@ def build_filters(
                         muscle_groups.append(antagonist)
                 
                 if len(muscle_groups) > 1:
-                    f["must"].append({"key": "target_muscle_group", "match": {"any": muscle_groups}})
+                    f["should"].append({"key": "target_muscle_group", "match": {"any": muscle_groups}})
                 else:
-                    f["must"].append({"key": "target_muscle_group", "match": {"value": muscle_groups[0]}})
-                print(f"[MAPPING] détection jambes → filtre MUST {muscle_groups} (obligatoire)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"value": muscle_groups[0]}})
+                print(f"[MAPPING] détection jambes → filtre SHOULD {muscle_groups} (optionnel, boost)")
             elif "abdos" in query_lower or "abdominaux" in query_lower or ("tronc" in query_lower and "core" not in query_lower):
                 # AMÉLIORATION : Inclure aussi Lombaires (antagoniste)
                 antagonist = _get_antagonist_muscle_group("Abdominaux")
                 if antagonist:
-                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Abdominaux", antagonist]}})
-                    print(f"[MAPPING] détection abdominaux → filtre MUST Abdominaux/{antagonist} (obligatoire, équilibré)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"any": ["Abdominaux", antagonist]}})
+                    print(f"[MAPPING] détection abdominaux → filtre SHOULD Abdominaux/{antagonist} (optionnel, boost)")
                 else:
-                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Abdominaux"}})
-                    print(f"[MAPPING] détection abdominaux → filtre MUST Abdominaux (obligatoire)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"value": "Abdominaux"}})
+                    print(f"[MAPPING] détection abdominaux → filtre SHOULD Abdominaux (optionnel, boost)")
             elif "fessiers" in query_lower or "glutes" in query_lower:
-                f["must"].append({"key": "target_muscle_group", "match": {"value": "Fessiers"}})
-                print(f"[MAPPING] détection fessiers → filtre MUST Fessiers (obligatoire)")
+                f["should"].append({"key": "target_muscle_group", "match": {"value": "Fessiers"}})
+                print(f"[MAPPING] détection fessiers → filtre SHOULD Fessiers (optionnel, boost)")
             elif "épaules" in query_lower or "deltoides" in query_lower or "deltoïdes" in query_lower:
-                f["must"].append({"key": "target_muscle_group", "match": {"value": "Épaules"}})
-                print(f"[MAPPING] détection épaules → filtre MUST Épaules (obligatoire)")
+                f["should"].append({"key": "target_muscle_group", "match": {"value": "Épaules"}})
+                print(f"[MAPPING] détection épaules → filtre SHOULD Épaules (optionnel, boost)")
             elif "pectoraux" in query_lower or "pecs" in query_lower:
                 # AMÉLIORATION : Inclure aussi Dos (antagoniste)
                 antagonist = _get_antagonist_muscle_group("Pectoraux")
                 if antagonist:
-                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Pectoraux", antagonist]}})
-                    print(f"[MAPPING] détection pectoraux → filtre MUST Pectoraux/{antagonist} (obligatoire, équilibré)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"any": ["Pectoraux", antagonist]}})
+                    print(f"[MAPPING] détection pectoraux → filtre SHOULD Pectoraux/{antagonist} (optionnel, boost)")
                 else:
-                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Pectoraux"}})
-                    print(f"[MAPPING] détection pectoraux → filtre MUST Pectoraux (obligatoire)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"value": "Pectoraux"}})
+                    print(f"[MAPPING] détection pectoraux → filtre SHOULD Pectoraux (optionnel, boost)")
             elif "dos" in query_lower and "quadriceps" not in query_lower:  # Éviter conflit avec "dos de la cuisse"
                 # AMÉLIORATION : Inclure aussi Pectoraux (antagoniste)
                 antagonist = _get_antagonist_muscle_group("Dos")
                 if antagonist:
-                    f["must"].append({"key": "target_muscle_group", "match": {"any": ["Dos", antagonist]}})
-                    print(f"[MAPPING] détection dos → filtre MUST Dos/{antagonist} (obligatoire, équilibré)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"any": ["Dos", antagonist]}})
+                    print(f"[MAPPING] détection dos → filtre SHOULD Dos/{antagonist} (optionnel, boost)")
                 else:
-                    f["must"].append({"key": "target_muscle_group", "match": {"value": "Dos"}})
-                    print(f"[MAPPING] détection dos → filtre MUST Dos (obligatoire)")
+                    f["should"].append({"key": "target_muscle_group", "match": {"value": "Dos"}})
+                    print(f"[MAPPING] détection dos → filtre SHOULD Dos (optionnel, boost)")
             
             # Zones du corps → body_region (should, optionnel)
             if any(kw in query for kw in ["tronc", "midsection", "core", "abdos", "abdominaux"]):
@@ -976,23 +976,16 @@ def build_filters(
                         f["should"].append({"key": "groupe", "match": {"any": ["Tonification & Renforcement", "Reconditionnement général", "Hypertrophie"]}})
                         print(f"[MAPPING] zone 'Full body' → filtres body_region/groupe (optionnels)")
         
-        # AMÉLIORATION : Stratégie de filtrage progressive
-        # Si on a des filtres must, on peut être plus permissif sur should
-        # Si on a seulement des should, on exige au moins 1 correspondance
+        # SOLUTION 1 : Tous les filtres sont SHOULD (optionnels) sauf domain=program
+        # La recherche sémantique fonctionne toujours, les filtres servent de boost
         if f["must"]:
-            # Avec des must, les should sont vraiment optionnels (boost seulement)
-            f["min_should"] = 0
+            # Seulement domain=program peut être en must
+            f["min_should"] = 0  # Les should sont vraiment optionnels (boost seulement)
+            print(f"[MAPPING] Mode auto : {len(f['must'])} filtres MUST (domain=program uniquement), {len(f['should'])} filtres should (optionnels, boost)")
         elif f["should"]:
-            # Sans must, exiger au moins 1 should (mais on aura un fallback progressif)
-            f["min_should"] = 1
-        else:
-            f["min_should"] = 0
-        
-        # Si on a des must, les garder même si should est vide
-        if f["must"]:
-            print(f"[MAPPING] Mode auto : {len(f['must'])} filtres MUST (obligatoires), {len(f['should'])} filtres should (optionnels)")
-        elif f["should"]:
-            print(f"[MAPPING] Mode auto : {len(f['should'])} filtres should, min_should=1 (au moins 1 doit correspondre)")
+            # Sans must, les should sont optionnels (min_should=0 pour ne pas bloquer)
+            f["min_should"] = 0  # SOLUTION 1 : Ne pas bloquer, laisser la recherche sémantique décider
+            print(f"[MAPPING] Mode auto : {len(f['should'])} filtres should (optionnels, boost sémantique)")
         else:
             print(f"[MAPPING] Mode auto : aucun filtre, recherche sémantique pure")
             return None

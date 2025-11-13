@@ -2,43 +2,19 @@ from typing import List, Tuple, Dict, Optional
 import numpy as np
 import os
 import pickle
-import sys
 from pathlib import Path
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue, SearchParams
-try:
-    from qdrant_client.models import MinShould  # type: ignore
-    HAS_MINSHOULD = True
-except Exception:
-    MinShould = None  # type: ignore
-    HAS_MINSHOULD = False
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from dotenv import load_dotenv
 
-# Ajouter le chemin racine pour importer intent.py
-sys.path.insert(0, os.path.abspath('.'))
-
-try:
-    from intent import classify_query, expand_query_for_bm25
-except ImportError:
-    print("[RETRIEVER] WARNING: intent module not found, BM25 expansion disabled.")
-    classify_query = None
-    expand_query_for_bm25 = None
-
 load_dotenv()
-
-# Mode RAG : strict | auto | flexible
-RAG_MODE = os.getenv("RAG_MODE", "strict").lower()
-STRICT_MODE = RAG_MODE == "strict"
 
 RRF_K = int(os.getenv("RRF_K", "60"))
 ENABLE_RERANK = os.getenv("ENABLE_RERANK", "false").lower() == "true"
 RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 BM25_STATE_PATH = "data/processed/bm25.pkl"
-# Pondération pour fusion hybride (alpha=0.6 : 60% embeddings, 40% BM25)
-HYBRID_ALPHA = float(os.getenv("HYBRID_ALPHA", "0.6"))
-MAX_DOCS = int(os.getenv("MAX_DOCS", "8"))
 
 class HybridRetriever:
     """Combine dense vector search with BM25 and optional cross-encoder reranking."""
@@ -136,94 +112,9 @@ class HybridRetriever:
         return results
 
     def _build_filter(self, filters: Optional[Dict]) -> Optional[Filter]:
-        """Build Qdrant filter from dict. Support both simple format and must/should/min_should format."""
+        """Build Qdrant filter from dict."""
         if not filters:
             return None
-        
-        # Format souple avec must/should/min_should
-        if isinstance(filters, dict) and ("must" in filters or "should" in filters):
-            must_conditions = []
-            should_conditions = []
-            must_not_conditions = []
-            
-            # must
-            for cond in filters.get("must", []):
-                if isinstance(cond, dict) and "key" in cond and "match" in cond:
-                    key = cond["key"]
-                    match_dict = cond["match"]
-                    # Support MatchAny pour les listes
-                    if "any" in match_dict:
-                        match_any = match_dict["any"]
-                        if isinstance(match_any, list) and len(match_any) > 0:
-                            must_conditions.append(FieldCondition(key=key, match=MatchAny(any=match_any)))
-                    # Support MatchValue pour les valeurs simples
-                    elif "value" in match_dict:
-                        match_val = match_dict["value"]
-                        if match_val is not None:
-                            must_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
-            
-            # should
-            for cond in filters.get("should", []):
-                if isinstance(cond, dict) and "key" in cond and "match" in cond:
-                    key = cond["key"]
-                    match_dict = cond["match"]
-                    # Support MatchAny pour les listes
-                    if "any" in match_dict:
-                        match_any = match_dict["any"]
-                        if isinstance(match_any, list) and len(match_any) > 0:
-                            should_conditions.append(FieldCondition(key=key, match=MatchAny(any=match_any)))
-                    # Support MatchValue pour les valeurs simples
-                    elif "value" in match_dict:
-                        match_val = match_dict["value"]
-                        if match_val is not None:
-                            should_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
-            
-            # must_not
-            for cond in filters.get("must_not", []):
-                if isinstance(cond, dict) and "key" in cond and "match" in cond:
-                    key = cond["key"]
-                    match_val = cond["match"].get("value")
-                    if match_val is not None:
-                        must_not_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_val)))
-            
-            # Construire le filtre avec min_should (objet MinShould, pas int)
-            min_should_val = int(filters.get("min_should", 1) or 1) if should_conditions else 0
-            
-            # 1) Essayer le schéma "nouveau" : should=list + min_should=MinShould(conditions=[...], min_count=n)
-            if HAS_MINSHOULD and min_should_val > 0 and should_conditions:
-                try:
-                    return Filter(
-                        must=must_conditions if must_conditions else None,
-                        should=should_conditions,  # Liste de conditions
-                        must_not=must_not_conditions if must_not_conditions else None,
-                        min_should=MinShould(conditions=should_conditions, min_count=min_should_val)  # Objet MinShould séparé
-                    )
-                except Exception as e:
-                    print(f"[RETRIEVER] MinShould wrapper non supporté ({e}), fallback ancien schéma.")
-            
-            # 2) Fallback ancien schéma : should=list + min_should=int
-            try:
-                if min_should_val > 0:
-                    return Filter(
-                        must=must_conditions if must_conditions else None,
-                        should=should_conditions if should_conditions else None,
-                        must_not=must_not_conditions if must_not_conditions else None,
-                        min_should=min_should_val
-                    )
-                return Filter(
-                    must=must_conditions if must_conditions else None,
-                    should=should_conditions if should_conditions else None,
-                    must_not=must_not_conditions if must_not_conditions else None
-                )
-            except Exception as e:
-                print(f"[RETRIEVER] min_should non supporté ({e}), retour sans min_should.")
-                return Filter(
-                    must=must_conditions if must_conditions else None,
-                    should=should_conditions if should_conditions else None,
-                    must_not=must_not_conditions if must_not_conditions else None
-                )
-        
-        # Format simple (compatibilité)
         must = []
         for key, val in filters.items():
             if isinstance(val, list):
@@ -232,32 +123,7 @@ class HybridRetriever:
                 must.append(FieldCondition(key=key, match=MatchValue(value=val)))
         return Filter(must=must) if must else None
 
-    def _hybrid_score(self, dense_score: float, sparse_score: float, alpha: float = HYBRID_ALPHA) -> float:
-        """
-        Fusion hybride pondérée entre scores denses (embeddings) et sparse (BM25).
-        
-        Args:
-            dense_score: Score de similarité vectorielle (normalisé 0-1)
-            sparse_score: Score BM25 (normalisé 0-1)
-            alpha: Pondération (0.6 = 60% embeddings, 40% BM25)
-        
-        Returns:
-            Score hybride combiné
-        """
-        return alpha * dense_score + (1 - alpha) * sparse_score
-
-    def _normalize_scores(self, scores: List[float]) -> List[float]:
-        """Normalise les scores entre 0 et 1."""
-        if not scores:
-            return []
-        min_score = min(scores)
-        max_score = max(scores)
-        if max_score == min_score:
-            return [1.0] * len(scores)
-        return [(s - min_score) / (max_score - min_score) for s in scores]
-
     def _reciprocal_rank_fusion(self, dense, sparse: List[Tuple[str, float]], k: int = RRF_K) -> List[Tuple[str, float]]:
-        """Fusion RRF (Reciprocal Rank Fusion) pour combiner dense et sparse."""
         scores: Dict[str, float] = {}
         for rank, result in enumerate(dense, 1):
             doc_id = result.id
@@ -291,271 +157,166 @@ class HybridRetriever:
             return self.doc_cache[doc_id]
         result = self.qdrant.retrieve(self.collection_name, [doc_id])
         return result[0].payload.get("text", "")
-
-    def bootstrap_bm25_from_qdrant(self, batch: int = 1000) -> None:
-        """Bootstrap BM25 index from Qdrant collection."""
-        print("[RETRIEVER] Bootstrap BM25 depuis Qdrant…")
-        next_page = None
-        all_points = []
-        while True:
-            recs, next_page = self.qdrant.scroll(
-                collection_name=self.collection_name,
-                with_payload=True,
-                with_vectors=False,
-                limit=batch,
-                offset=next_page
-            )
-            if not recs:
-                break
-            all_points.extend(recs)
-            if next_page is None:
-                break
-        if all_points:
-            self.build_bm25_index(all_points)
-            print(f"[RETRIEVER] BM25 index construit avec {len(all_points)} documents.")
+    
+    def _matches_filters(self, payload: Dict, filters: Optional[Dict]) -> bool:
+        """
+        Vérifie si un document correspond aux filtres (post-filtering).
+        Supporte le format must/should/min_should.
+        Retourne True si le document correspond, False sinon.
+        """
+        if not filters:
+            return True
+        
+        # Support format must/should/min_should
+        if isinstance(filters, dict) and ("must" in filters or "should" in filters):
+            # Vérifier must (obligatoire)
+            for cond in filters.get("must", []):
+                if isinstance(cond, dict) and "key" in cond and "match" in cond:
+                    key = cond["key"]
+                    match_dict = cond["match"]
+                    doc_val = payload.get(key)
+                    
+                    if "any" in match_dict:
+                        # MatchAny : doc_val doit être dans la liste
+                        if doc_val not in match_dict["any"]:
+                            return False
+                    elif "value" in match_dict:
+                        # MatchValue : correspondance exacte
+                        if doc_val != match_dict["value"]:
+                            return False
+            
+            # Vérifier should (au moins 1 doit correspondre si min_should > 0)
+            should_matches = 0
+            min_should = filters.get("min_should", 0)
+            if min_should > 0:
+                for cond in filters.get("should", []):
+                    if isinstance(cond, dict) and "key" in cond and "match" in cond:
+                        key = cond["key"]
+                        match_dict = cond["match"]
+                        doc_val = payload.get(key)
+                        
+                        matched = False
+                        if "any" in match_dict:
+                            if doc_val in match_dict["any"]:
+                                matched = True
+                        elif "value" in match_dict:
+                            if doc_val == match_dict["value"]:
+                                matched = True
+                        
+                        if matched:
+                            should_matches += 1
+                
+                if should_matches < min_should:
+                    return False
         else:
-            print("[RETRIEVER] Aucun document pour BM25.")
+            # Format simple (compatibilité)
+            for key, val in filters.items():
+                if isinstance(val, list):
+                    if payload.get(key) not in val:
+                        return False
+                else:
+                    if payload.get(key) != val:
+                        return False
+        
+        return True
 
-    def retrieve(self, query: str, top_k: int = 10, filters: Optional[Dict] = None, use_rerank: bool = None, score_threshold: float = 0.05) -> List[Dict]:
+    def retrieve(self, query: str, top_k: int = 10, filters: Optional[Dict] = None, use_rerank: bool = None) -> List[Dict]:
         """
         Retrieve top documents for the query using hybrid search.
         
-        Args:
-            query: Requête utilisateur
-            top_k: Nombre de documents à retourner
-            filters: Filtres Qdrant (peut contenir des listes pour multi-valeurs)
-            use_rerank: Activer le reranking (défaut: ENABLE_RERANK)
-            score_threshold: Score minimum pour inclure un document (défaut: 0.05, mode RAG adaptatif)
-        
-        Returns:
-            Liste de documents avec score >= score_threshold, toujours au moins 3 documents si disponibles
+        SOLUTION 2 : Post-filtering
+        - Recherche sémantique SANS filtres d'abord (pour ne pas bloquer la recherche)
+        - Filtrage APRÈS la recherche sémantique
+        - Si pas assez de résultats filtrés, inclure les meilleurs non-filtrés
         """
-        print("[RETRIEVER] Mode RAG adaptatif activé (fallback automatique, seuil permissif)")
-        
         if use_rerank is None:
             use_rerank = ENABLE_RERANK
         
-        qdrant_filter = self._build_filter(filters)
-        
-        # Dense vector search avec score_threshold permissif (0.05)
+        # SOLUTION 2 : Recherche sémantique SANS filtres d'abord
+        # On récupère plus de documents pour avoir une marge après filtrage
         query_vector = self._embed(query)
-        max_docs_limit = int(os.getenv("MAX_DOCS", MAX_DOCS))
+        max_docs = top_k * 4  # Récupérer 4x plus pour avoir une marge après filtrage
         
-        # AMÉLIORATION : Logging amélioré pour diagnostic
-        if qdrant_filter:
-            must_count = len(qdrant_filter.must) if qdrant_filter.must else 0
-            should_count = len(qdrant_filter.should) if qdrant_filter.should else 0
-            min_should_val = getattr(qdrant_filter, 'min_should', None)
-            if isinstance(min_should_val, object) and hasattr(min_should_val, 'min_count'):
-                min_should_val = min_should_val.min_count
-            print(f"[RETRIEVER] Recherche dense avec limit={max_docs_limit}, score_threshold=0.05")
-            print(f"[RETRIEVER] Filtres appliqués: {must_count} must, {should_count} should, min_should={min_should_val}")
-        else:
-            print(f"[RETRIEVER] Recherche dense avec limit={max_docs_limit}, score_threshold=0.05 (sans filtres)")
+        # Construire le filtre Qdrant seulement pour les must (domain=program)
+        # Les should seront appliqués en post-filtering
+        qdrant_filter = None
+        if filters and isinstance(filters, dict) and "must" in filters:
+            # Seulement les must pour Qdrant (domain=program)
+            must_conditions = []
+            for cond in filters.get("must", []):
+                if isinstance(cond, dict) and "key" in cond and "match" in cond:
+                    key = cond["key"]
+                    match_dict = cond["match"]
+                    if "any" in match_dict:
+                        must_conditions.append(FieldCondition(key=key, match=MatchAny(any=match_dict["any"])))
+                    elif "value" in match_dict:
+                        must_conditions.append(FieldCondition(key=key, match=MatchValue(value=match_dict["value"])))
+            if must_conditions:
+                qdrant_filter = Filter(must=must_conditions)
+        
+        print(f"[RETRIEVER] Recherche sémantique SANS filtres restrictifs (limit={max_docs}) pour ne pas bloquer la recherche")
         dense_results = self.qdrant.search(
             collection_name=self.collection_name,
             query_vector=query_vector,
-            query_filter=qdrant_filter,
-            limit=max_docs_limit,
-            score_threshold=0.05,  # Plus permissif
+            query_filter=qdrant_filter,  # Seulement must (domain=program) si présent
+            limit=max_docs,
             search_params=SearchParams(hnsw_ef=int(os.getenv("HNSW_EF", "128")))
         )
+        print(f"[RETRIEVER] {len(dense_results)} documents trouvés par recherche sémantique")
         
-        # AMÉLIORATION : Stratégie de filtrage progressive (cascade de fallback)
-        # 1. Essayer avec tous les filtres
-        # 2. Si < 3 résultats, retirer les filtres should (garder seulement must)
-        # 3. Si toujours < 3, retirer tous les filtres
-        if not dense_results or len(dense_results) < 3:
-            print(f"[RETRIEVER] Peu de résultats ({len(dense_results)}), stratégie de fallback progressive...")
-            
-            # Étape 2 : Retirer les filtres should, garder seulement must
-            if qdrant_filter and qdrant_filter.must:
-                print(f"[RETRIEVER] Fallback étape 1 : retirer filtres should, garder must uniquement")
-                fallback_filter = Filter(must=qdrant_filter.must, must_not=qdrant_filter.must_not)
-                dense_results = self.qdrant.search(
-                    collection_name=self.collection_name,
-                    query_vector=query_vector,
-                    query_filter=fallback_filter,
-                    limit=max_docs_limit,
-                    score_threshold=0.03,
-                    search_params=SearchParams(hnsw_ef=int(os.getenv("HNSW_EF", "128")))
-                )
-                print(f"[RETRIEVER] Fallback étape 1 : {len(dense_results)} documents trouvés (filtres must uniquement)")
-            
-            # Étape 3 : Si toujours < 3, retirer tous les filtres
-            if not dense_results or len(dense_results) < 3:
-                print(f"[RETRIEVER] Fallback étape 2 : retirer tous les filtres (recherche purement sémantique)")
-                dense_results = self.qdrant.search(
-                    collection_name=self.collection_name,
-                    query_vector=query_vector,
-                    limit=max_docs_limit,
-                    score_threshold=0.02,  # Encore plus permissif pour le fallback
-                    with_payload=True,
-                )
-                print(f"[RETRIEVER] Fallback étape 2 : {len(dense_results)} documents trouvés sans filtres")
-        
-        # Sparse BM25 results avec expansion sémantique
-        bm25_query = query
-        if expand_query_for_bm25:
-            from intent import reweight_groups_by_zone
-            ranked = classify_query(query) if classify_query else {}
-            ranked = reweight_groups_by_zone(ranked, query=query)  # Re-rank avant expansion avec query
-            expansions = expand_query_for_bm25(ranked)
-            if expansions:
-                bm25_query = " ".join([query] + expansions)
-                print(f"[RETRIEVER] BM25 expansion: {len(expansions)} termes ajoutés")
-        sparse_results = self._bm25_search(bm25_query, top_k * 2)
-        sparse_was_empty = (len(sparse_results) == 0)
-        
-        # AMÉLIORATION : Filtrer BM25 avec support du format must/should
+        # Post-filtering : filtrer les résultats APRÈS la recherche sémantique
         if filters:
+            print(f"[RETRIEVER] Post-filtering avec filtres should/must...")
+            filtered_dense = []
+            for result in dense_results:
+                # Récupérer le payload pour vérifier les filtres
+                payload = result.payload if hasattr(result, 'payload') else {}
+                if self._matches_filters(payload, filters):
+                    filtered_dense.append(result)
+            
+            print(f"[RETRIEVER] {len(filtered_dense)} documents après post-filtering")
+            
+            # Si pas assez de résultats filtrés, inclure les meilleurs non-filtrés
+            if len(filtered_dense) < top_k:
+                print(f"[RETRIEVER] Seulement {len(filtered_dense)} résultats filtrés (< {top_k}), ajout des meilleurs non-filtrés")
+                # Ajouter les meilleurs non-filtrés pour atteindre top_k
+                filtered_ids = {r.id for r in filtered_dense}
+                for result in dense_results:
+                    if len(filtered_dense) >= top_k:
+                        break
+                    if result.id not in filtered_ids:
+                        filtered_dense.append(result)
+            
+            dense_results = filtered_dense[:max_docs]
+        
+        # Sparse BM25 results (post-filter si nécessaire)
+        sparse_results = self._bm25_search(query, top_k * 2)
+        if filters:
+            # Filter BM25 results via payload_cache avec support format must/should
             filtered_sparse = []
             for doc_id, score in sparse_results:
                 p = self.payload_cache.get(doc_id, {})
-                ok = True
-                
-                # Support format must/should
-                if isinstance(filters, dict) and ("must" in filters or "should" in filters):
-                    # Vérifier must (obligatoire)
-                    for cond in filters.get("must", []):
-                        if isinstance(cond, dict) and "key" in cond and "match" in cond:
-                            key = cond["key"]
-                            match_dict = cond["match"]
-                            doc_val = p.get(key)
-                            
-                            if "any" in match_dict:
-                                # MatchAny : doc_val doit être dans la liste
-                                if doc_val not in match_dict["any"]:
-                                    ok = False
-                                    break
-                            elif "value" in match_dict:
-                                # MatchValue : correspondance exacte
-                                if doc_val != match_dict["value"]:
-                                    ok = False
-                                    break
-                    
-                    if not ok:
-                        continue
-                    
-                    # Vérifier should (au moins 1 doit correspondre si min_should > 0)
-                    should_matches = 0
-                    min_should = filters.get("min_should", 0)
-                    if min_should > 0:
-                        for cond in filters.get("should", []):
-                            if isinstance(cond, dict) and "key" in cond and "match" in cond:
-                                key = cond["key"]
-                                match_dict = cond["match"]
-                                doc_val = p.get(key)
-                                
-                                matched = False
-                                if "any" in match_dict:
-                                    if doc_val in match_dict["any"]:
-                                        matched = True
-                                elif "value" in match_dict:
-                                    if doc_val == match_dict["value"]:
-                                        matched = True
-                                
-                                if matched:
-                                    should_matches += 1
-                        
-                        if should_matches < min_should:
-                            ok = False
-                else:
-                    # Format simple (compatibilité)
-                    for key, val in filters.items():
-                        if isinstance(val, list):
-                            if p.get(key) not in val:
-                                ok = False
-                                break
-                        else:
-                            if p.get(key) != val:
-                                ok = False
-                                break
-                
-                if ok:
+                if self._matches_filters(p, filters):
                     filtered_sparse.append((doc_id, score))
             sparse_results = filtered_sparse[:top_k * 2]
         
-        # Fusion hybride : combiner dense et sparse avec pondération
-        # Extraire les scores denses et sparse
-        dense_scores_dict = {r.id: r.score for r in dense_results}
-        sparse_scores_dict = {doc_id: score for doc_id, score in sparse_results}
+        # Fuse
+        fused = self._reciprocal_rank_fusion(dense_results, sparse_results, k=RRF_K)
+        candidates = fused[:max(top_k * 2, 20)]
         
-        # Normaliser les scores pour la fusion pondérée (0-1)
-        dense_scores_list = list(dense_scores_dict.values())
-        sparse_scores_list = list(sparse_scores_dict.values())
-        
-        dense_normalized_dict = {}
-        sparse_normalized_dict = {}
-        
-        if dense_scores_list:
-            dense_normalized = self._normalize_scores(dense_scores_list)
-            for i, doc_id in enumerate(dense_scores_dict.keys()):
-                dense_normalized_dict[doc_id] = dense_normalized[i]
-        
-        if sparse_scores_list:
-            sparse_normalized = self._normalize_scores(sparse_scores_list)
-            for i, doc_id in enumerate(sparse_scores_dict.keys()):
-                sparse_normalized_dict[doc_id] = sparse_normalized[i]
-        
-        # Fusion hybride pondérée : alpha * dense + (1-alpha) * sparse
-        all_doc_ids = set(dense_scores_dict.keys()) | set(sparse_scores_dict.keys())
-        hybrid_scores: Dict[str, float] = {}
-        
-        for doc_id in all_doc_ids:
-            dense_score = dense_normalized_dict.get(doc_id, 0.0)
-            sparse_score = sparse_normalized_dict.get(doc_id, 0.0)
-            hybrid_scores[doc_id] = self._hybrid_score(dense_score, sparse_score, alpha=HYBRID_ALPHA)
-        
-        # Trier par score hybride décroissant
-        candidates = sorted(hybrid_scores.items(), key=lambda x: x[1], reverse=True)
-        candidates = candidates[:max(top_k * 2, 20)]
-        
-        # Mode RAG adaptatif : garantir au moins 3 documents après fusion
-        if len(candidates) < 3:
-            print("[RETRIEVER] Moins de 3 documents après fusion, retour du top 3 par BM25.")
-            bm25_backup = self._bm25_search(query, top_k=3)
-            for doc_id, score in bm25_backup:
-                if doc_id not in hybrid_scores:
-                    hybrid_scores[doc_id] = 0.1 + score * 0.05
-            # Re-trier avec les nouveaux documents
-            candidates = sorted(hybrid_scores.items(), key=lambda x: x[1], reverse=True)
-            candidates = candidates[:max(3, len(candidates))]
-        
-        print(f"[RETRIEVER] Fusion hybride : {len(candidates)} candidats (alpha={HYBRID_ALPHA}, dense={len(dense_results)}, sparse={len(sparse_results)})")
-        
-        # Bonus matériel : amélioration pour correspondre au matériel utilisateur
+        # Préférence douce : "sans matériel" -> léger bonus aux docs bodyweight
         ql = (query or "").lower()
-        equipment_bonus = float(os.getenv("EQUIPMENT_PREFERENCE_BONUS", "0.02"))
-        
-        # Détection du matériel depuis la query
-        preferred_equipment = set()
-        if any(kw in ql for kw in ["sans materiel", "sans matériel", "poids du corps", "bodyweight", "aucun"]):
-            preferred_equipment.update({"bodyweight", "aucun", "", "none", "no_equipment"})
-        if any(kw in ql for kw in ["haltère", "haltères", "dumbbell", "dumbbells"]):
-            preferred_equipment.add("dumbbell")
-        if any(kw in ql for kw in ["élastique", "élastiques", "band", "bands"]):
-            preferred_equipment.add("bands")
-        if any(kw in ql for kw in ["barre", "rack", "machine", "machines"]):
-            preferred_equipment.add("full_gym")
-        
-        # Bonus depuis les filtres si equipment est une liste
-        if filters and "equipment" in filters:
-            eq_filter = filters["equipment"]
-            if isinstance(eq_filter, list):
-                preferred_equipment.update(eq_filter)
-            else:
-                preferred_equipment.add(str(eq_filter))
-        
-        # Appliquer le bonus
-        if preferred_equipment:
+        if ("sans materiel" in ql) or ("sans matériel" in ql) or ("poids du corps" in ql) or ("bodyweight" in ql):
+            bonus = float(os.getenv("EQUIPMENT_PREFERENCE_BONUS", "0.01"))
+            preferred_vals = {"bodyweight", "aucun", "", "none", "no_equipment"}
             boosted = []
             for doc_id, score in candidates:
                 p = self.payload_cache.get(doc_id, {})
                 eq = str(p.get("equipment", "")).strip().lower()
-                if eq in preferred_equipment or any(peq.lower() in eq for peq in preferred_equipment):
-                    score += equipment_bonus
+                if eq in preferred_vals:
+                    score += bonus
                 boosted.append((doc_id, score))
+            # Reste trié par score décroissant
             candidates = sorted(boosted, key=lambda x: x[1], reverse=True)
         
         if use_rerank and candidates:
@@ -563,168 +324,19 @@ class HybridRetriever:
         else:
             reranked = candidates[:top_k]
         
-        # Mode RAG adaptatif : filtrer par score (>= 0.05) mais garantir au moins 3 documents
-        filtered = [(doc_id, score) for doc_id, score in reranked if score >= score_threshold]
-        
-        # Mode RAG adaptatif : garantir au moins 3 documents si disponibles
-        if len(filtered) < 3 and reranked:
-            min_docs = min(3, len(reranked))
-            filtered = reranked[:min_docs]
-            print(f"[RETRIEVER] Garantie minimum : retour de {len(filtered)} documents (scores: {[s for _, s in filtered]})")
-        
-        # Mode strict : liste vide si aucun document pertinent
-        if not filtered or len(filtered) == 0:
-            if STRICT_MODE:
-                print("[RETRIEVER] Aucun document pertinent après fallback (mode strict) → return [].")
-                return []
-            # Mode non strict : on peut tolérer 1 doc faible si besoin (optionnel)
-            print("[RETRIEVER] Aucun document pertinent, mode non strict → return [].")
-            return []
-        
         # Batch retrieve pour limiter à 1 appel réseau
-        ids = [doc_id for doc_id, _ in filtered]
-        if not ids:
-            if STRICT_MODE:
-                print("[RETRIEVER] ERREUR : Aucun document à retourner (mode strict) → return [].")
-                return []
-            print("[RETRIEVER] ERREUR : Aucun document à retourner → return [].")
-            return []
-        
+        ids = [doc_id for doc_id, _ in reranked]
         recs = self.qdrant.retrieve(self.collection_name, ids)
         payload_by_id = {r.id: r for r in recs}
         docs: List[Dict] = []
-        for doc_id, score in filtered:
+        for doc_id, score in reranked:
             r = payload_by_id.get(doc_id)
             if not r:
                 continue
-            # Construire le document avec tous les champs du payload fusionnés
-            doc = {
+            docs.append({
                 "id": doc_id,
                 "text": r.payload.get("text", ""),
                 "score": score,
                 "payload": r.payload,
-                "meta": {"sparse_empty": sparse_was_empty},
-                **r.payload  # Fusionner tous les champs du payload pour accès direct
-            }
-            docs.append(doc)
-        
-        # NOUVEAU : Équilibrage et variété pour les exercices
-        if docs and any(d.get("domain") == "exercise" and d.get("type") == "exercise" for d in docs):
-            docs = self._balance_and_diversify_exercises(docs, query, top_k)
-        
+            })
         return docs
-    
-    def _balance_and_diversify_exercises(self, docs: List[Dict], query: str, top_k: int) -> List[Dict]:
-        """
-        Équilibre les exercices par groupe musculaire (antagonistes) et force la variété des familles.
-        
-        Args:
-            docs: Liste de documents (exercices + autres)
-            query: Requête utilisateur
-            top_k: Nombre maximum de documents à retourner
-        
-        Returns:
-            Liste équilibrée et diversifiée d'exercices + autres documents
-        """
-        exercises = [d for d in docs if d.get("domain") == "exercise" and d.get("type") == "exercise"]
-        other_docs = [d for d in docs if d.get("domain") != "exercise" or d.get("type") != "exercise"]
-        
-        if not exercises:
-            return docs
-        
-        query_lower = query.lower()
-        
-        # Détecter les groupes musculaires demandés et leurs antagonistes
-        muscle_groups_to_balance = []
-        
-        if "bras" in query_lower or ("muscler" in query_lower and "bras" in query_lower):
-            muscle_groups_to_balance = [("Biceps", "Triceps")]
-        elif "biceps" in query_lower:
-            muscle_groups_to_balance = [("Biceps", "Triceps")]
-        elif "triceps" in query_lower:
-            muscle_groups_to_balance = [("Triceps", "Biceps")]
-        elif "jambes" in query_lower or "cuisses" in query_lower:
-            muscle_groups_to_balance = [("Quadriceps", "Ischio-jambiers")]
-        elif "quadriceps" in query_lower:
-            muscle_groups_to_balance = [("Quadriceps", "Ischio-jambiers")]
-        elif "abdos" in query_lower or "abdominaux" in query_lower:
-            muscle_groups_to_balance = [("Abdominaux", "Lombaires")]
-        elif "pectoraux" in query_lower:
-            muscle_groups_to_balance = [("Pectoraux", "Dos")]
-        elif "dos" in query_lower and "quadriceps" not in query_lower:
-            muscle_groups_to_balance = [("Dos", "Pectoraux")]
-        
-        # Équilibrer par groupes musculaires antagonistes
-        balanced_exercises = []
-        primary_count = 0
-        antagonist_count = 0
-        
-        if muscle_groups_to_balance:
-            for primary, antagonist in muscle_groups_to_balance:
-                primary_exercises = [e for e in exercises if e.get("target_muscle_group") == primary]
-                antagonist_exercises = [e for e in exercises if e.get("target_muscle_group") == antagonist]
-                
-                primary_count = len(primary_exercises)
-                antagonist_count = len(antagonist_exercises)
-                
-                # Équilibrer 1:1 (ratio recommandé)
-                max_len = max(len(primary_exercises), len(antagonist_exercises))
-                for i in range(max_len):
-                    if i < len(primary_exercises):
-                        balanced_exercises.append(primary_exercises[i])
-                    if i < len(antagonist_exercises):
-                        balanced_exercises.append(antagonist_exercises[i])
-        else:
-            # Pas de groupes antagonistes détectés, garder les exercices tels quels
-            balanced_exercises = exercises
-        
-        # Forcer la variété des familles d'exercices (max 2 par famille)
-        diversified_exercises = self._enforce_exercise_family_variety(balanced_exercises, max_same_family=2)
-        
-        # Limiter à top_k pour les exercices
-        final_exercises = diversified_exercises[:top_k]
-        
-        # Reconstruire la liste complète avec les autres documents
-        result = other_docs + final_exercises
-        
-        # Trier par score décroissant
-        result.sort(key=lambda x: x.get("score", 0), reverse=True)
-        
-        if muscle_groups_to_balance:
-            print(f"[RETRIEVER] Équilibrage : {primary_count} primaires, {antagonist_count} antagonistes → {len(final_exercises)} exercices équilibrés")
-        
-        return result
-    
-    def _enforce_exercise_family_variety(self, exercises: List[Dict], max_same_family: int = 2) -> List[Dict]:
-        """
-        Force la variété des familles d'exercices (max max_same_family exercices de la même famille).
-        
-        Args:
-            exercises: Liste d'exercices
-            max_same_family: Nombre maximum d'exercices de la même famille
-        
-        Returns:
-            Liste diversifiée d'exercices
-        """
-        families_count = {}
-        diversified = []
-        
-        for exercise in exercises:
-            # Récupérer exercise_family depuis différents emplacements possibles
-            family = (exercise.get("exercise_family") or 
-                     exercise.get("meta", {}).get("exercise_family") or
-                     exercise.get("payload", {}).get("exercise_family") or
-                     "Unknown")
-            count = families_count.get(family, 0)
-            
-            if count < max_same_family:
-                diversified.append(exercise)
-                families_count[family] = count + 1
-            else:
-                exo_name = exercise.get("exercise") or exercise.get("payload", {}).get("exercise", "?")
-                print(f"[RETRIEVER] Exercice '{exo_name}' exclu (famille '{family}' déjà à {max_same_family})")
-        
-        if len(families_count) > 1:
-            print(f"[RETRIEVER] Variété : {len(families_count)} familles différentes ({', '.join(families_count.keys())})")
-        
-        return diversified
