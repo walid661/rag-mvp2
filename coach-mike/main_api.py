@@ -148,7 +148,7 @@ async def get_current_user(authorization: str = Header(None)):
 # 4. LOGIQUE DE MAPPING (Le Cœur)
 # --------------------------------------------------------------------------
 
-def map_profile_to_rag_filters(profile: UserProfile) -> Dict[str, Any]:
+def map_profile_to_rag_filters(profile: UserProfile, query: str = None) -> Dict[str, Any]:
     """
     Traduit le profil Supabase détaillé en un dict simple 
     que mon `rag_router.py: build_filters` peut comprendre.
@@ -176,6 +176,10 @@ def map_profile_to_rag_filters(profile: UserProfile) -> Dict[str, Any]:
             rag_profile["equipment"] = "none"
     else:
         rag_profile["equipment"] = "none"
+    
+    # CORRECTION : Passer zones_ciblees au rag_router
+    if profile.zones_ciblees:
+        rag_profile["zones_ciblees"] = profile.zones_ciblees
 
     print(f"Profil Supabase mappé en : {rag_profile}")
     return rag_profile
@@ -211,18 +215,17 @@ async def chat_with_coach(
     try:
         # --- Logique RAG ---
         
-        # 1. Mapper le profil Supabase en filtres RAG
-        rag_filters_profile = map_profile_to_rag_filters(profile)
-        print(f"[CHAT] Profil mappé: {rag_filters_profile}")
+        # 1. Mapper le profil Supabase en filtres RAG (avec query pour détection d'intention)
+        rag_filters_profile = map_profile_to_rag_filters(profile, query=query)
+        print(f"[CHAT] Profil mappé (query-aware): {rag_filters_profile}")
         
         # 2. Utiliser le rag_router.py
-        # On détermine le "stage" selon le type de requête
-        # Pour l'instant, on utilise "select_meso" par défaut
-        # TODO: Ajouter une logique de détection d'intention pour choisir le stage
-        stage = "select_meso"
+        # CORRECTION : Utiliser "auto" pour laisser la recherche sémantique décider
+        # "auto" permet de chercher dans tous les types de documents (exercices, meso, micro)
+        stage = "auto"
         
-        # `build_filters` utilise le profil simple mappé
-        filters = build_filters(stage=stage, profile=rag_filters_profile)
+        # `build_filters` utilise le profil simple mappé + la query pour détecter l'intention
+        filters = build_filters(stage=stage, profile=rag_filters_profile, extra={"query": query})
         print(f"[CHAT] Filtres RAG appliqués: {filters}")
 
         # 3. Utiliser le retriever

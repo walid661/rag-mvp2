@@ -928,12 +928,27 @@ def build_filters(
                     f["should"].append({"key": "target_muscle_group", "match": {"value": "Dos"}})
                     print(f"[MAPPING] détection dos → filtre SHOULD Dos (optionnel, boost)")
             
-            # Zones du corps → body_region (should, optionnel)
-            if any(kw in query for kw in ["tronc", "midsection", "core", "abdos", "abdominaux"]):
-                f["should"].append({"key": "body_region", "match": {"value": "Tronc"}})
-            elif any(kw in query for kw in ["haut du corps", "upper body", "bras", "épaules", "dos", "pectoraux"]):
+            # Zones du corps → body_region ET groupes musculaires (should, optionnel)
+            # CORRECTION : Détecter "bas du corps" AVANT les autres conditions pour ajouter les groupes musculaires
+            if any(kw in query_lower for kw in ["bas du corps", "lower body"]) or ("muscler" in query_lower and "bas du corps" in query_lower):
+                f["should"].append({"key": "body_region", "match": {"value": "Membre inférieur"}})
+                # Ajouter aussi les groupes musculaires du bas du corps
+                muscle_groups = _map_zone_to_muscle_group("bas du corps")
+                if muscle_groups:
+                    f["should"].append({"key": "target_muscle_group", "match": {"any": muscle_groups}})
+                    print(f"[MAPPING] détection 'bas du corps' → filtres SHOULD body_region=Membre inférieur + {muscle_groups} (optionnel, boost)")
+            elif any(kw in query_lower for kw in ["haut du corps", "upper body"]) or ("muscler" in query_lower and "haut du corps" in query_lower):
                 f["should"].append({"key": "body_region", "match": {"value": "Membre supérieur"}})
-            elif any(kw in query for kw in ["bas du corps", "lower body", "jambes", "cuisses", "fessiers"]):
+                # Ajouter aussi les groupes musculaires du haut du corps
+                muscle_groups = _map_zone_to_muscle_group("haut du corps")
+                if muscle_groups:
+                    f["should"].append({"key": "target_muscle_group", "match": {"any": muscle_groups}})
+                    print(f"[MAPPING] détection 'haut du corps' → filtres SHOULD body_region=Membre supérieur + {muscle_groups} (optionnel, boost)")
+            elif any(kw in query_lower for kw in ["tronc", "midsection", "core", "abdos", "abdominaux"]):
+                f["should"].append({"key": "body_region", "match": {"value": "Tronc"}})
+            elif any(kw in query_lower for kw in ["bras", "épaules", "dos", "pectoraux"]):
+                f["should"].append({"key": "body_region", "match": {"value": "Membre supérieur"}})
+            elif any(kw in query_lower for kw in ["jambes", "cuisses", "fessiers"]):
                 f["should"].append({"key": "body_region", "match": {"value": "Membre inférieur"}})
         
         # 4. Zones ciblées du profil (should, optionnel seulement si pas de must depuis query)
