@@ -2,20 +2,12 @@ import json
 import os
 import random
 
-# Paths
-BASE_DIR = r"c:\Dossier Walid\rag-mvp2\data\processed\raw_v2\logic_jsonl_v2"
+# Paths (Dynamic based on current file location)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.join(CURRENT_DIR, "..", "data", "processed", "raw_v2", "logic_jsonl_v2")
 MESO_PATH = os.path.join(BASE_DIR, "meso_catalog_v2.jsonl")
 MICRO_PATH = os.path.join(BASE_DIR, "micro_catalog_v2.jsonl")
 PLANNER_PATH = os.path.join(BASE_DIR, "planner_schema.jsonl")
-
-# User Profile
-USER_PROFILE = {
-    "level": "Intermédiaire",
-    "goal": "Perte de poids",
-    "schedule": 3,
-    "equipment": ["bodyweight", "resistance_band", "elastique", "autochargé"], # Normalized
-    "psychology": "Challengeant"
-}
 
 def load_jsonl(path):
     data = []
@@ -29,7 +21,6 @@ def load_jsonl(path):
     return data
 
 def get_split_strategy(days):
-    # Simplified logic based on planner_schema.jsonl and user request
     if days == 3:
         return {
             "split_type": "Haut / Bas / Full Body",
@@ -38,24 +29,20 @@ def get_split_strategy(days):
     return {"split_type": "Custom", "sessions": ["Full Body"] * days}
 
 def find_meso(catalog, level, goal):
-    # Map goal to keywords
     keywords = []
     if "perte de poids" in goal.lower():
         keywords = ["métabolique", "metcon", "cardio", "affinement", "perte de poids"]
     
     candidates = []
     for meso in catalog:
-        # Check Level
         if meso.get("niveau", "").lower() != level.lower():
             continue
             
-        # Check Goal Match (in Objectif, Groupe, Nom, or Text)
         text_dump = json.dumps(meso, ensure_ascii=False).lower()
         if any(k in text_dump for k in keywords):
             candidates.append(meso)
     
     if not candidates:
-        print(f"Warning: No exact Meso match found for {level} / {goal}. Returning random Intermédiaire.")
         # Fallback: just level
         candidates = [m for m in catalog if m.get("niveau", "").lower() == level.lower()]
         
@@ -64,7 +51,6 @@ def find_meso(catalog, level, goal):
 def find_micro(catalog, theme, allowed_equipment):
     candidates = []
     
-    # Define filters based on theme
     target_focus = []
     text_keywords = []
     
@@ -80,35 +66,26 @@ def find_micro(catalog, theme, allowed_equipment):
     
     for micro in catalog:
         structured = micro.get("structured", {})
-        
-        # 1. Equipment Filter
-        # Micro equipment must be a SUBSET of allowed equipment
-        # If micro requires nothing (empty), it's OK.
-        # If micro requires 'dumbbell', and user doesn't have it, SKIP.
         micro_eq = structured.get("equipment_detected", [])
-        # Normalize micro_eq
+        
         normalized_micro_eq = []
         for eq in micro_eq:
             if eq in ["bodyweight", "autochargé"]: normalized_micro_eq.append("bodyweight")
             elif eq in ["resistance_band", "élastique", "bande"]: normalized_micro_eq.append("resistance_band")
-            else: normalized_micro_eq.append(eq) # e.g. dumbbell
+            else: normalized_micro_eq.append(eq)
             
-        # Check if all required are in allowed
-        # Allowed map
         allowed_map = []
         for eq in allowed_equipment:
             if eq in ["bodyweight", "autochargé"]: allowed_map.append("bodyweight")
             elif eq in ["resistance_band", "elastique"]: allowed_map.append("resistance_band")
+            else: allowed_map.append(eq)
             
         if not set(normalized_micro_eq).issubset(set(allowed_map)):
             continue
             
-        # 2. Focus Filter
         if target_focus and structured.get("focus_detected") not in target_focus:
             continue
             
-        # 3. Text Keyword Filter (Soft filter? Or Hard?)
-        # Let's try hard filter first, if no results, relax.
         text_dump = json.dumps(micro, ensure_ascii=False).lower()
         if text_keywords:
             if not any(k in text_dump for k in text_keywords):
@@ -118,11 +95,9 @@ def find_micro(catalog, theme, allowed_equipment):
         
     if not candidates:
         # Relax text filter
-        print(f"Warning: No strict match for {theme}. Relaxing text filter.")
         for micro in catalog:
             structured = micro.get("structured", {})
             micro_eq = structured.get("equipment_detected", [])
-            # Normalize and check equipment again (same logic)
             normalized_micro_eq = []
             for eq in micro_eq:
                 if eq in ["bodyweight", "autochargé"]: normalized_micro_eq.append("bodyweight")
@@ -133,6 +108,7 @@ def find_micro(catalog, theme, allowed_equipment):
             for eq in allowed_equipment:
                 if eq in ["bodyweight", "autochargé"]: allowed_map.append("bodyweight")
                 elif eq in ["resistance_band", "elastique"]: allowed_map.append("resistance_band")
+                else: allowed_map.append(eq)
 
             if not set(normalized_micro_eq).issubset(set(allowed_map)):
                 continue
@@ -144,28 +120,27 @@ def find_micro(catalog, theme, allowed_equipment):
             
     return candidates[0] if candidates else None
 
-def main():
-    # Load Data
+def generate_weekly_plan(profile):
+    """
+    Generates a weekly plan based on the user profile.
+    profile: dict with keys 'level', 'goal', 'schedule', 'equipment'
+    """
     meso_catalog = load_jsonl(MESO_PATH)
     micro_catalog = load_jsonl(MICRO_PATH)
     
-    # Step 1: Split
-    split = get_split_strategy(USER_PROFILE["schedule"])
+    split = get_split_strategy(profile.get("schedule", 3))
+    meso = find_meso(meso_catalog, profile.get("level", "Intermédiaire"), profile.get("goal", "Renforcement"))
     
-    # Step 2: Meso
-    meso = find_meso(meso_catalog, USER_PROFILE["level"], USER_PROFILE["goal"])
     if not meso:
-        print("Critical Error: No Meso found.")
-        return
+        return {"error": "No suitable Meso-cycle found."}
 
     meso_constraints = meso.get("constraints", {})
     
-    # Step 3: Assemble Sessions
     sessions = []
-    days = [1, 3, 5] # Example days
+    days = [1, 3, 5] 
     
     for i, theme in enumerate(split["sessions"]):
-        micro = find_micro(micro_catalog, theme, USER_PROFILE["equipment"])
+        micro = find_micro(micro_catalog, theme, profile.get("equipment", []))
         
         session = {
             "day": days[i] if i < len(days) else i+1,
@@ -178,10 +153,9 @@ def main():
         }
         sessions.append(session)
         
-    # Step 4: Generate JSON
-    output = {
-        "weekly_plan_id": "plan_001",
-        "user_summary": f"{USER_PROFILE['level']} / {USER_PROFILE['goal']} / {USER_PROFILE['schedule']}x",
+    return {
+        "weekly_plan_id": f"plan_{random.randint(1000, 9999)}",
+        "user_summary": f"{profile.get('level')} / {profile.get('goal')} / {profile.get('schedule')}x",
         "strategy": {
             "split_type": split["split_type"],
             "meso_focus": meso.get("objectif", "General"),
@@ -189,8 +163,13 @@ def main():
         },
         "sessions": sessions
     }
-    
-    print(json.dumps(output, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__":
-    main()
+    # Test run
+    test_profile = {
+        "level": "Intermédiaire",
+        "goal": "Perte de poids",
+        "schedule": 3,
+        "equipment": ["bodyweight", "resistance_band"]
+    }
+    print(json.dumps(generate_weekly_plan(test_profile), indent=2, ensure_ascii=False))
