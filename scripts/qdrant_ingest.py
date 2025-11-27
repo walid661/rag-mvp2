@@ -1,65 +1,67 @@
 import json
-from pathlib import Path
-from typing import Iterable
+import os
 import uuid
+from typing import Iterable
 from urllib.parse import urlparse
+from dotenv import load_dotenv
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
-    OptimizersConfigDiff, HnswConfigDiff,
-    ScalarQuantization, ScalarQuantizationConfig
+    OptimizersConfigDiff, ScalarQuantization, ScalarQuantizationConfig
 )
-
 from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
-import os
 
+# Load environment variables
 load_dotenv()
 
-# Collection and model configuration
+# Configuration
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "coach_mike")
-VECTOR_SIZE = 768  # default embedding size for all-mpnet-base-v2
-MODEL_NAME = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2")
+# Force local model for SentenceTransformer to avoid OpenAI model names from env
+MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+VECTOR_SIZE = 768 
+
+# Paths to the new V2 Data
+BASE_DATA_DIR = r"data/processed/raw_v2/logic_jsonl_v2"
+MESO_PATH = os.path.join(BASE_DATA_DIR, "meso_catalog_v2.jsonl")
+MICRO_PATH = os.path.join(BASE_DATA_DIR, "micro_catalog_v2.jsonl")
+
+def get_qdrant_client() -> QdrantClient:
+    """Initialize Qdrant Client from Env Vars."""
+    url = os.getenv("QDRANT_URL", "http://localhost:6333")
+    api_key = os.getenv("QDRANT_API_KEY", None)
+    
+    print(f"🔌 Connecting to Qdrant at {url}...")
+    return QdrantClient(url=url, api_key=api_key)
+
+def get_embedding_model() -> SentenceTransformer:
+    """Load the embedding model."""
+    print(f"🧠 Loading embedding model: {MODEL_NAME}...")
+    return SentenceTransformer(MODEL_NAME)
 
 def load_jsonl(path: str) -> Iterable[dict]:
-    """Yield JSON objects from a JSONL file."""
-    with open(path, encoding="utf-8") as f:
+    """Yield JSON objects from a JSONL file safely."""
+    print(f"📂 Reading file: {path}")
+    if not os.path.exists(path):
+        print(f"❌ ERROR: File not found at {path}")
+        return []
+        
+    with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
-                yield json.loads(line)
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    print(f"⚠️ Skipping invalid JSON line in {path}")
 
-def get_embedding_model(model_name: str = MODEL_NAME) -> SentenceTransformer:
-    return SentenceTransformer(model_name)
-
-def upsert_batch(client: QdrantClient, collection: str, points: list):
-    if points:
-        client.upsert(collection_name=collection, points=points)
-
-def main(
-    host: str = None,
-    port: int = None,
-    exercises_path: str = "data/processed/exercises.jsonl",
-    micro_path: str = "data/processed/microcycles.jsonl",
-    meso_path: str = "data/processed/mesocycles.jsonl",
-    batch_size: int = 100,
-):
-    # Parse QDRANT_URL if provided, otherwise use host/port defaults
-    qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6335")
-    if host is None or port is None:
-        parsed = urlparse(qdrant_url)
-        host = parsed.hostname or "localhost"
-        port = parsed.port or 6335
-    
-    client = QdrantClient(host=host, port=port)
-
-    # Create or recreate collection
+def recreate_collection(client: QdrantClient):
+    """Delete and recreate the collection to ensure a clean V2 schema."""
     if client.collection_exists(COLLECTION_NAME):
-        print(f"Suppression de la collection existante '{COLLECTION_NAME}'...")
+        print(f"♻️  Deleting existing collection '{COLLECTION_NAME}'...")
         client.delete_collection(COLLECTION_NAME)
     
-    print(f"Creation de la collection '{COLLECTION_NAME}'...")
+    print(f"🆕 Creating collection '{COLLECTION_NAME}' with size {VECTOR_SIZE}...")
     client.create_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=VectorParams(
@@ -67,9 +69,8 @@ def main(
             distance=Distance.COSINE,
             on_disk=True
         ),
-        optimizers_config=OptimizersConfigDiff(
-            indexing_threshold=int(os.getenv("INDEXING_THRESHOLD", "1000"))
-        ),
+        # Optimize for speed
+        optimizers_config=OptimizersConfigDiff(indexing_threshold=1000),
         quantization_config=ScalarQuantization(
             scalar=ScalarQuantizationConfig(
                 type="int8",
@@ -78,101 +79,95 @@ def main(
             )
         )
     )
+    print("✅ Collection created successfully.")
 
-    # Réduire le full_scan_threshold et éventuellement limiter les threads d'indexation
-    client.update_collection(
-        collection_name=COLLECTION_NAME,
-        hnsw_config=HnswConfigDiff(
-            full_scan_threshold=int(os.getenv("FULL_SCAN_THRESHOLD", "500")),
-            max_indexing_threads=int(os.getenv("MAX_INDEXING_THREADS", "0"))
-        )
-    )
-    print(f"Collection '{COLLECTION_NAME}' creee avec succes !")
+def process_and_ingest(client: QdrantClient, model: SentenceTransformer):
+    """Read V2 files, vectorize text, and upload structured payloads."""
+    
+    # Define the files to ingest and their domain tags
+    files_map = [
+        (MESO_PATH, "program", "meso_ref"),
+        (MICRO_PATH, "program", "micro_ref")
+    ]
+    
+    batch = []
+    batch_size = 100
+    total_points = 0
 
-    # Load embedding model
-    model = get_embedding_model()
+    for file_path, domain, doc_type in files_map:
+        for record in load_jsonl(file_path):
+            
+            # 1. Construct the Text for Embedding (The "Vibe")
+            # Combine relevant text fields to ensure semantic search works
+            parts = [
+                record.get("nom", ""),
+                record.get("objectif", ""),
+                record.get("intention", ""),
+                record.get("text", "")
+            ]
+            text_for_vector = " ".join([p for p in parts if p])
+            
+            if not text_for_vector.strip():
+                continue
 
-    def prepare_points(path: str, domain: str):
-        for record in load_jsonl(path):
-            emb = model.encode(record["text"]).tolist()
-            pid = uuid.uuid4().hex
+            # 2. Create Vector
+            vector = model.encode(text_for_vector).tolist()
             
-            # Normalisation du payload avant upsert
-            meta = record.get("meta") or record.get("metadata") or {}
+            # 3. Prepare Payload (The Logic)
+            # Store the ENTIRE record so 'constraints' and 'structured' are available
+            payload = record.copy()
+            payload["text"] = text_for_vector # Ensure text is searchable
+            payload["domain"] = domain
+            payload["type"] = doc_type
             
-            payload = {
-                # Texte principal (clé canonique attendue côté retrieval/BM25)
-                "text": (
-                    record.get("text")
-                    or meta.get("text")
-                    or record.get("content")
-                ),
-                
-                # Provenance du document (chemin fichier, URL, titre…)
-                "source": (
-                    record.get("source")
-                    or meta.get("source")
-                    or "json"
-                ),
-                
-                # Page, si applicable (PDF)
-                "page": (
-                    record.get("page")
-                    or meta.get("page")
-                ),
-                
-                # Typologie fonctionnelle (exercise, micro, meso, taxonomy…)
-                "type": (
-                    record.get("type")
-                    or meta.get("type")
-                    or record.get("domain")
-                    or domain
-                    or "exercise"
-                ),
-                
-                # Horodatage utile pour l'audit/tri
-                "timestamp": (
-                    record.get("updated_at")
-                    or record.get("created_at")
-                    or meta.get("updated_at")
-                    or meta.get("created_at")
-                    or meta.get("timestamp")
-                ),
-                
-                # Fusion intégrale des métadonnées existantes
-                **meta,
-            }
-            
-            # Optionnel : préserver des identifiants s'ils existent déjà dans le record
-            if record.get("doc_id"):
-                payload["doc_id"] = record["doc_id"]
-            if record.get("chunk_id"):
-                payload["chunk_id"] = record["chunk_id"]
-            
-            # Ajouter domain si pas déjà présent
-            if "domain" not in payload:
-                payload["domain"] = domain
-            
-            yield PointStruct(
-                id=pid,
-                vector=emb,
-                payload=payload
-            )
+            # 4. Generate Deterministic ID
+            # Uses the ID from the file (e.g., "mcA01") to create a UUID
+            record_id = record.get("id") or record.get("meso_id") or record.get("micro_id")
+            if record_id:
+                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(record_id)))
+            else:
+                point_id = uuid.uuid4().hex
 
-    # Ingest all domains
-    for path, domain in [
-        (exercises_path, "exercise"),
-        (micro_path, "micro"),
-        (meso_path, "meso")
-    ]:
-        batch = []
-        for point in prepare_points(path, domain):
-            batch.append(point)
+            # 5. Add to Batch
+            batch.append(PointStruct(id=point_id, vector=vector, payload=payload))
+
             if len(batch) >= batch_size:
-                upsert_batch(client, COLLECTION_NAME, batch)
+                client.upsert(collection_name=COLLECTION_NAME, points=batch)
+                total_points += len(batch)
+                print(f"   -> Upserted {len(batch)} points from {os.path.basename(file_path)}")
                 batch = []
-        if batch:
-            upsert_batch(client, COLLECTION_NAME, batch)
+
+    # Final flush
+    if batch:
+        client.upsert(collection_name=COLLECTION_NAME, points=batch)
+        total_points += len(batch)
+        print(f"   -> Upserted final {len(batch)} points.")
+
+    print(f"\n🎉 Ingestion Complete! Total documents in '{COLLECTION_NAME}': {total_points}")
+
+def test_query(client: QdrantClient, model: SentenceTransformer):
+    """Perform a quick sanity check query."""
+    print("\n🔎 Running Sanity Check Query: 'Perte de poids'...")
+    vector = model.encode("Je veux perdre du poids et sécher").tolist()
+    
+    results = client.search(
+        collection_name=COLLECTION_NAME,
+        query_vector=vector,
+        limit=1
+    )
+    
+    if results:
+        hit = results[0]
+        print(f"✅ Top Hit: {hit.payload.get('nom')} (Score: {hit.score:.3f})")
+        print(f"   Logic Data Present: {'constraints' in hit.payload or 'structured' in hit.payload}")
+    else:
+        print("⚠️ No results found. Ingestion might have failed.")
 
 if __name__ == "__main__":
-    main()
+    print("🚀 Starting V2 Ingestion Pipeline...")
+    client = get_qdrant_client()
+    model = get_embedding_model()
+    
+    recreate_collection(client)
+    process_and_ingest(client, model)
+    test_query(client, model)

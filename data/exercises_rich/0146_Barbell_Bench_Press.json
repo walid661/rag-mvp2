@@ -1,0 +1,14 @@
+{
+  "id": "d6f2325b-0b72-4016-b8ec-841fd36d8ff6",
+  "text": "Exercise: Barbell Bench Press\nDifficulty: Novice\nMuscles: Chest\nEquipment: Barbell\nMechanics: Compound\nBody Region: Upper Body\nForce Type: Push\nClassification: Powerlifting",
+  "metadata": {
+    "difficulty_level": "Novice",
+    "muscles": "Chest",
+    "equipment": "Barbell",
+    "mechanics": "Compound",
+    "body_region": "Upper Body",
+    "force_type": "Push",
+    "laterality": "Bilateral",
+    "primary_exercise_classification": "Powerlifting"
+  }
+}
