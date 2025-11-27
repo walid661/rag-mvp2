@@ -67,9 +67,9 @@ demo = gr.ChatInterface(
     title="🏋️ Coach IA - Fitness RAG",
     description="Posez vos questions sur l'entraînement et le fitness",
     examples=[
-        "Propose-moi un programme pour débutant",
-        "Exercices pour les jambes sans matériel",
-        "Comment améliorer ma force ?",
+        ["Propose-moi un programme pour débutant", "Débutant", "Renforcement", "haltères, tapis"],
+        ["Exercices pour les jambes sans matériel", "Intermédiaire", "Renforcement", "aucun"],
+        ["Comment améliorer ma force ?", "Confirmé", "Force", "barre, rack"],
     ],
     additional_inputs=[
         gr.Dropdown(
