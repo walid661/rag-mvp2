@@ -33,7 +33,21 @@ if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     sys.exit(1)
 
 # --- CLIENTS ---
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+# --- CLIENTS ---
+# Use Service Role Key if available to bypass RLS, otherwise fallback to Anon Key
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+KEY_TO_USE = SUPABASE_SERVICE_ROLE_KEY if SUPABASE_SERVICE_ROLE_KEY else SUPABASE_ANON_KEY
+
+if not KEY_TO_USE:
+    print("CRITICAL: No Supabase Key found (ANON or SERVICE_ROLE).")
+    sys.exit(1)
+
+if SUPABASE_SERVICE_ROLE_KEY:
+    print("✅ USING SERVICE ROLE KEY (Bypassing RLS)")
+else:
+    print("⚠️ USING ANON KEY (Subject to RLS - might fail if not authenticated)")
+
+supabase: Client = create_client(SUPABASE_URL, KEY_TO_USE)
 qdrant_client = QdrantClient(url=QDRANT_URL)
 
 # Initialize RAG Services
