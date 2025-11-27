@@ -128,8 +128,18 @@ def generate_weekly_plan(profile):
     meso_catalog = load_jsonl(MESO_PATH)
     micro_catalog = load_jsonl(MICRO_PATH)
     
+    # Map frontend levels (English) to Catalog levels (French)
+    level_map = {
+        "beginner": "Débutant",
+        "intermediate": "Intermédiaire",
+        "advanced": "Confirmé"
+    }
+    
+    user_level = profile.get("level", "intermediate").lower()
+    target_level = level_map.get(user_level, "Intermédiaire")
+    
     split = get_split_strategy(profile.get("schedule", 3))
-    meso = find_meso(meso_catalog, profile.get("level", "Intermédiaire"), profile.get("goal", "Renforcement"))
+    meso = find_meso(meso_catalog, target_level, profile.get("goal", "Renforcement"))
     
     if not meso:
         return {"error": "No suitable Meso-cycle found."}
