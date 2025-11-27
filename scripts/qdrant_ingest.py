@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import glob
-from typing import Iterable, List, Dict, Any
+from typing import Iterable, Dict, Any
 from dotenv import load_dotenv
 
 from qdrant_client import QdrantClient
@@ -12,19 +12,20 @@ from qdrant_client.models import (
 )
 from sentence_transformers import SentenceTransformer
 
-# Load environment variables
+# --- CONFIGURATION ---
 load_dotenv()
 
-# --- CONFIGURATION ---
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "coach_mike")
-MODEL_NAME = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2")
-VECTOR_SIZE = 768 
 
-# Define absolute or relative paths based on your workspace
-# logic_jsonl_v2 contains the BRAIN (Rules, Mesos, Micros)
-LOGIC_DIR = r"data/processed/raw_v2/logic_jsonl_v2"
-# exercices_new_v2 contains the MUSCLE (3000+ JSON files)
-EXERCISES_DIR = r"data/processed/raw_v2/exercices_new_v2"
+# MULTILINGUAL UPGRADE: Using a model that understands French queries better
+MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+VECTOR_SIZE = 384  # CRITICAL: This model outputs 384 dim vectors
+
+# --- PATHS (Based on your file structure) ---
+# Logic: Single JSONL files
+LOGIC_DIR = os.path.join("data", "processed", "raw_v2", "logic_jsonl_v2")
+# Exercises: Folder containing individual JSON files
+EXERCISES_DIR = os.path.join("data", "processed", "raw_v2", "exercices_new_v2")
 
 def get_qdrant_client() -> QdrantClient:
     url = os.getenv("QDRANT_URL", "http://localhost:6333")
@@ -33,15 +34,15 @@ def get_qdrant_client() -> QdrantClient:
     return QdrantClient(url=url, api_key=api_key)
 
 def get_embedding_model() -> SentenceTransformer:
-    print(f"🧠 Loading embedding model: {MODEL_NAME}...")
+    print(f"🧠 Loading Multilingual model: {MODEL_NAME}...")
     return SentenceTransformer(MODEL_NAME)
 
 def load_jsonl(path: str) -> Iterable[dict]:
     """Reads a single JSONL file."""
-    print(f"   📄 Reading JSONL: {os.path.basename(path)}")
     if not os.path.exists(path):
-        print(f"   ❌ File not found: {path}")
+        print(f"   ⚠️ Logic file not found: {path}")
         return []
+    print(f"   📖 Reading Logic: {os.path.basename(path)}")
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -52,35 +53,35 @@ def load_jsonl(path: str) -> Iterable[dict]:
                     pass
 
 def load_json_directory(directory: str) -> Iterable[dict]:
-    """Iterates over all .json files in a directory."""
-    print(f"   📂 Scanning folder: {directory}")
+    """Iterates over all .json files in the exercise directory."""
+    print(f"   📂 Scanning Exercise Folder: {directory}")
     if not os.path.exists(directory):
         print(f"   ❌ Directory not found: {directory}")
         return []
     
-    # Find all .json files
-    json_files = glob.glob(os.path.join(directory, "*.json"))
-    print(f"   found {len(json_files)} JSON files to ingest.")
+    # Use glob to find all .json files
+    json_pattern = os.path.join(directory, "*.json")
+    files = glob.glob(json_pattern)
+    print(f"   🏋️ Found {len(files)} exercise files.")
     
-    for file_path in json_files:
+    for file_path in files:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                # Sometimes the file contains a single dict, sometimes a list
-                if isinstance(data, dict):
+                if isinstance(data, list):
+                    for item in data: yield item
+                elif isinstance(data, dict):
                     yield data
-                elif isinstance(data, list):
-                    for item in data:
-                        yield item
         except Exception as e:
-            print(f"Error reading {file_path}: {e}")
+            print(f"   ⚠️ Error reading {os.path.basename(file_path)}")
 
 def recreate_collection(client: QdrantClient):
+    """Resets the collection to fit the new Vector Size (384)."""
     if client.collection_exists(COLLECTION_NAME):
-        print(f"♻️  Deleting existing collection '{COLLECTION_NAME}'...")
+        print(f"♻️  Deleting old collection '{COLLECTION_NAME}'...")
         client.delete_collection(COLLECTION_NAME)
     
-    print(f"🆕 Creating collection '{COLLECTION_NAME}'...")
+    print(f"🆕 Creating collection '{COLLECTION_NAME}' (Size: {VECTOR_SIZE})...")
     client.create_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE, on_disk=True),
@@ -90,10 +91,31 @@ def recreate_collection(client: QdrantClient):
         )
     )
 
+def construct_vector_text(record: Dict[str, Any], domain: str) -> str:
+    """Builds the string to be embedded based on domain context."""
+    parts = []
+    if domain == "exercise":
+        parts = [
+            record.get("exercise", ""),
+            record.get("target_muscle_group", ""),
+            record.get("movement_pattern", ""),
+            record.get("primary_equipment", ""),
+            record.get("text", "")
+        ]
+    else:
+        # Logic / Program domain
+        parts = [
+            record.get("rule_text", ""),
+            record.get("nom", ""),
+            record.get("objectif", ""),
+            record.get("intention", ""),
+            record.get("text", "")
+        ]
+    return " ".join([str(p) for p in parts if p]).strip()
+
 def process_and_ingest(client: QdrantClient, model: SentenceTransformer):
     
     # 1. Define Logic Files to Ingest (The Brain)
-    # We explicitly list the important ones or iterate the whole folder
     logic_files = [
         ("planner_schema.jsonl", "logic", "planner_rule"),
         ("macro_to_micro_rules.jsonl", "logic", "micro_rule"),
@@ -115,17 +137,7 @@ def process_and_ingest(client: QdrantClient, model: SentenceTransformer):
         path = os.path.join(LOGIC_DIR, filename)
         for record in load_jsonl(path):
             
-            # Construct Text for Vector
-            # Prioritize specific fields, fallback to generic 'text'
-            parts = [
-                record.get("rule_text", ""),
-                record.get("nom", ""),
-                record.get("objectif", ""),
-                record.get("intention", ""),
-                record.get("text", "")
-            ]
-            text_vector = " ".join([str(p) for p in parts if p]).strip()
-            
+            text_vector = construct_vector_text(record, domain)
             if not text_vector: continue
 
             # Prepare Point
@@ -146,7 +158,6 @@ def process_and_ingest(client: QdrantClient, model: SentenceTransformer):
                 total_points += len(batch)
                 batch = []
     
-    # Flush remaining logic
     if batch:
         client.upsert(collection_name=COLLECTION_NAME, points=batch)
         total_points += len(batch)
@@ -156,16 +167,7 @@ def process_and_ingest(client: QdrantClient, model: SentenceTransformer):
     print("\n--- PHASE 2: INGESTING EXERCISES ---")
     for record in load_json_directory(EXERCISES_DIR):
         
-        # Construct Text for Vector (Rich context for exercises)
-        parts = [
-            record.get("exercise", ""),
-            record.get("target_muscle_group", ""),
-            record.get("movement_pattern", ""),
-            record.get("primary_equipment", ""),
-            record.get("text", "")
-        ]
-        text_vector = " ".join([str(p) for p in parts if p]).strip()
-
+        text_vector = construct_vector_text(record, "exercise")
         if not text_vector: continue
 
         vector = model.encode(text_vector).tolist()
@@ -186,7 +188,6 @@ def process_and_ingest(client: QdrantClient, model: SentenceTransformer):
             print(f"   -> Processed {total_points} total items...", end="\r")
             batch = []
 
-    # Flush remaining exercises
     if batch:
         client.upsert(collection_name=COLLECTION_NAME, points=batch)
         total_points += len(batch)

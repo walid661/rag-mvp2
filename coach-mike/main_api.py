@@ -41,7 +41,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 # --- RAG Config ---
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6335")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "coach_mike")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
 # --- Initialisation des services RAG (au démarrage) ---
 print("Initialisation du RAG Service...")
