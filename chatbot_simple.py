@@ -99,4 +99,4 @@ demo = gr.ChatInterface(
 if __name__ == "__main__":
     print("🚀 Lancement du chatbot...")
     print("⚠️  Assurez-vous que l'API est lancée: python main_api.py")
-    demo.launch(server_port=7860)
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
