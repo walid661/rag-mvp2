@@ -1,8 +1,8 @@
 import json
 import os
 import uuid
-from typing import Iterable
-from urllib.parse import urlparse
+import glob
+from typing import Iterable, List, Dict, Any
 from dotenv import load_dotenv
 
 from qdrant_client import QdrantClient
@@ -15,37 +15,33 @@ from sentence_transformers import SentenceTransformer
 # Load environment variables
 load_dotenv()
 
-# Configuration
+# --- CONFIGURATION ---
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "coach_mike")
-# Force local model for SentenceTransformer to avoid OpenAI model names from env
-MODEL_NAME = "sentence-transformers/all-mpnet-base-v2"
+MODEL_NAME = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-mpnet-base-v2")
 VECTOR_SIZE = 768 
 
-# Paths to the new V2 Data
-BASE_DATA_DIR = r"data/processed/raw_v2/logic_jsonl_v2"
-MESO_PATH = os.path.join(BASE_DATA_DIR, "meso_catalog_v2.jsonl")
-MICRO_PATH = os.path.join(BASE_DATA_DIR, "micro_catalog_v2.jsonl")
+# Define absolute or relative paths based on your workspace
+# logic_jsonl_v2 contains the BRAIN (Rules, Mesos, Micros)
+LOGIC_DIR = r"data/processed/raw_v2/logic_jsonl_v2"
+# exercices_new_v2 contains the MUSCLE (3000+ JSON files)
+EXERCISES_DIR = r"data/processed/raw_v2/exercices_new_v2"
 
 def get_qdrant_client() -> QdrantClient:
-    """Initialize Qdrant Client from Env Vars."""
     url = os.getenv("QDRANT_URL", "http://localhost:6333")
     api_key = os.getenv("QDRANT_API_KEY", None)
-    
     print(f"🔌 Connecting to Qdrant at {url}...")
     return QdrantClient(url=url, api_key=api_key)
 
 def get_embedding_model() -> SentenceTransformer:
-    """Load the embedding model."""
     print(f"🧠 Loading embedding model: {MODEL_NAME}...")
     return SentenceTransformer(MODEL_NAME)
 
 def load_jsonl(path: str) -> Iterable[dict]:
-    """Yield JSON objects from a JSONL file safely."""
-    print(f"📂 Reading file: {path}")
+    """Reads a single JSONL file."""
+    print(f"   📄 Reading JSONL: {os.path.basename(path)}")
     if not os.path.exists(path):
-        print(f"❌ ERROR: File not found at {path}")
+        print(f"   ❌ File not found: {path}")
         return []
-        
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -53,121 +49,153 @@ def load_jsonl(path: str) -> Iterable[dict]:
                 try:
                     yield json.loads(line)
                 except json.JSONDecodeError:
-                    print(f"⚠️ Skipping invalid JSON line in {path}")
+                    pass
+
+def load_json_directory(directory: str) -> Iterable[dict]:
+    """Iterates over all .json files in a directory."""
+    print(f"   📂 Scanning folder: {directory}")
+    if not os.path.exists(directory):
+        print(f"   ❌ Directory not found: {directory}")
+        return []
+    
+    # Find all .json files
+    json_files = glob.glob(os.path.join(directory, "*.json"))
+    print(f"   found {len(json_files)} JSON files to ingest.")
+    
+    for file_path in json_files:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # Sometimes the file contains a single dict, sometimes a list
+                if isinstance(data, dict):
+                    yield data
+                elif isinstance(data, list):
+                    for item in data:
+                        yield item
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
 
 def recreate_collection(client: QdrantClient):
-    """Delete and recreate the collection to ensure a clean V2 schema."""
     if client.collection_exists(COLLECTION_NAME):
         print(f"♻️  Deleting existing collection '{COLLECTION_NAME}'...")
         client.delete_collection(COLLECTION_NAME)
     
-    print(f"🆕 Creating collection '{COLLECTION_NAME}' with size {VECTOR_SIZE}...")
+    print(f"🆕 Creating collection '{COLLECTION_NAME}'...")
     client.create_collection(
         collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(
-            size=VECTOR_SIZE,
-            distance=Distance.COSINE,
-            on_disk=True
-        ),
-        # Optimize for speed
+        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE, on_disk=True),
         optimizers_config=OptimizersConfigDiff(indexing_threshold=1000),
         quantization_config=ScalarQuantization(
-            scalar=ScalarQuantizationConfig(
-                type="int8",
-                quantile=0.99,
-                always_ram=True
-            )
+            scalar=ScalarQuantizationConfig(type="int8", quantile=0.99, always_ram=True)
         )
     )
-    print("✅ Collection created successfully.")
 
 def process_and_ingest(client: QdrantClient, model: SentenceTransformer):
-    """Read V2 files, vectorize text, and upload structured payloads."""
     
-    # Define the files to ingest and their domain tags
-    files_map = [
-        (MESO_PATH, "program", "meso_ref"),
-        (MICRO_PATH, "program", "micro_ref")
+    # 1. Define Logic Files to Ingest (The Brain)
+    # We explicitly list the important ones or iterate the whole folder
+    logic_files = [
+        ("planner_schema.jsonl", "logic", "planner_rule"),
+        ("macro_to_micro_rules.jsonl", "logic", "micro_rule"),
+        ("muscle_balance_rules.jsonl", "logic", "balance_rule"),
+        ("generation_spec.jsonl", "logic", "spec_rule"),
+        ("objective_priority.jsonl", "logic", "priority_rule"),
+        ("meso_catalog_v2.jsonl", "program", "meso_ref"),
+        ("micro_catalog_v2.jsonl", "program", "micro_ref"),
+        ("balanced_session_examples.jsonl", "example", "session_example")
     ]
-    
+
+    total_points = 0
     batch = []
     batch_size = 100
-    total_points = 0
 
-    for file_path, domain, doc_type in files_map:
-        for record in load_jsonl(file_path):
+    # --- STEP A: INGEST LOGIC (JSONL) ---
+    print("\n--- PHASE 1: INGESTING LOGIC ---")
+    for filename, domain, doc_type in logic_files:
+        path = os.path.join(LOGIC_DIR, filename)
+        for record in load_jsonl(path):
             
-            # 1. Construct the Text for Embedding (The "Vibe")
-            # Combine relevant text fields to ensure semantic search works
+            # Construct Text for Vector
+            # Prioritize specific fields, fallback to generic 'text'
             parts = [
+                record.get("rule_text", ""),
                 record.get("nom", ""),
                 record.get("objectif", ""),
                 record.get("intention", ""),
                 record.get("text", "")
             ]
-            text_for_vector = " ".join([p for p in parts if p])
+            text_vector = " ".join([str(p) for p in parts if p]).strip()
             
-            if not text_for_vector.strip():
-                continue
+            if not text_vector: continue
 
-            # 2. Create Vector
-            vector = model.encode(text_for_vector).tolist()
-            
-            # 3. Prepare Payload (The Logic)
-            # Store the ENTIRE record so 'constraints' and 'structured' are available
+            # Prepare Point
+            vector = model.encode(text_vector).tolist()
             payload = record.copy()
-            payload["text"] = text_for_vector # Ensure text is searchable
+            payload["text"] = text_vector
             payload["domain"] = domain
             payload["type"] = doc_type
             
-            # 4. Generate Deterministic ID
-            # Uses the ID from the file (e.g., "mcA01") to create a UUID
-            record_id = record.get("id") or record.get("meso_id") or record.get("micro_id")
-            if record_id:
-                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(record_id)))
-            else:
-                point_id = uuid.uuid4().hex
+            # ID Generation
+            rec_id = record.get("id") or record.get("meso_id") or record.get("micro_id")
+            point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, str(rec_id) if rec_id else text_vector))
 
-            # 5. Add to Batch
             batch.append(PointStruct(id=point_id, vector=vector, payload=payload))
 
             if len(batch) >= batch_size:
                 client.upsert(collection_name=COLLECTION_NAME, points=batch)
                 total_points += len(batch)
-                print(f"   -> Upserted {len(batch)} points from {os.path.basename(file_path)}")
                 batch = []
-
-    # Final flush
+    
+    # Flush remaining logic
     if batch:
         client.upsert(collection_name=COLLECTION_NAME, points=batch)
         total_points += len(batch)
-        print(f"   -> Upserted final {len(batch)} points.")
+        batch = []
 
-    print(f"\n🎉 Ingestion Complete! Total documents in '{COLLECTION_NAME}': {total_points}")
+    # --- STEP B: INGEST EXERCISES (FOLDER OF JSONs) ---
+    print("\n--- PHASE 2: INGESTING EXERCISES ---")
+    for record in load_json_directory(EXERCISES_DIR):
+        
+        # Construct Text for Vector (Rich context for exercises)
+        parts = [
+            record.get("exercise", ""),
+            record.get("target_muscle_group", ""),
+            record.get("movement_pattern", ""),
+            record.get("primary_equipment", ""),
+            record.get("text", "")
+        ]
+        text_vector = " ".join([str(p) for p in parts if p]).strip()
 
-def test_query(client: QdrantClient, model: SentenceTransformer):
-    """Perform a quick sanity check query."""
-    print("\n🔎 Running Sanity Check Query: 'Perte de poids'...")
-    vector = model.encode("Je veux perdre du poids et sécher").tolist()
-    
-    results = client.search(
-        collection_name=COLLECTION_NAME,
-        query_vector=vector,
-        limit=1
-    )
-    
-    if results:
-        hit = results[0]
-        print(f"✅ Top Hit: {hit.payload.get('nom')} (Score: {hit.score:.3f})")
-        print(f"   Logic Data Present: {'constraints' in hit.payload or 'structured' in hit.payload}")
-    else:
-        print("⚠️ No results found. Ingestion might have failed.")
+        if not text_vector: continue
+
+        vector = model.encode(text_vector).tolist()
+        payload = record.copy()
+        payload["text"] = text_vector
+        payload["domain"] = "exercise"
+        payload["type"] = "exercise_ref"
+        
+        # Use Exercise Name as stable ID source
+        ex_name = record.get("exercise", "unknown")
+        point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, ex_name))
+
+        batch.append(PointStruct(id=point_id, vector=vector, payload=payload))
+
+        if len(batch) >= batch_size:
+            client.upsert(collection_name=COLLECTION_NAME, points=batch)
+            total_points += len(batch)
+            print(f"   -> Processed {total_points} total items...", end="\r")
+            batch = []
+
+    # Flush remaining exercises
+    if batch:
+        client.upsert(collection_name=COLLECTION_NAME, points=batch)
+        total_points += len(batch)
+
+    print(f"\n\n🎉 INGESTION COMPLETE! Total documents in '{COLLECTION_NAME}': {total_points}")
+    print("You can now use the Planner Agent.")
 
 if __name__ == "__main__":
-    print("🚀 Starting V2 Ingestion Pipeline...")
     client = get_qdrant_client()
     model = get_embedding_model()
-    
     recreate_collection(client)
     process_and_ingest(client, model)
-    test_query(client, model)
