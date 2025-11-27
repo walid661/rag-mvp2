@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 
 # --- Mode développement sans authentification ---
-ENABLE_AUTH = os.getenv("ENABLE_AUTH", "true").lower() == "true"
+ENABLE_AUTH = os.getenv("ENABLE_AUTH", "false").lower() == "true"
 
 # --- Imports de MON RAG ---
 sys.path.insert(0, os.path.abspath('.'))
