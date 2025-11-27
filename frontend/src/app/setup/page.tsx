@@ -13,9 +13,9 @@ const GOALS = [
 ]
 
 const LEVELS = [
-    { id: 'Débutant', label: 'Beginner', desc: '< 6 months exp' },
-    { id: 'Intermédiaire', label: 'Intermediate', desc: '6 months - 2 years' },
-    { id: 'Confirmé', label: 'Advanced', desc: '2+ years exp' },
+    { id: 'beginner', label: 'Beginner', desc: '< 6 months exp' },
+    { id: 'intermediate', label: 'Intermediate', desc: '6 months - 2 years' },
+    { id: 'advanced', label: 'Advanced', desc: '2+ years exp' },
 ]
 
 const EQUIPMENT = [
@@ -118,8 +118,8 @@ export default function SetupPage() {
                                 key={option.id}
                                 onClick={() => setFormData({ ...formData, goal: option.id })}
                                 className={`w-full p-4 rounded-2xl border text-left transition-all ${formData.goal === option.id
-                                        ? 'bg-white text-black border-white'
-                                        : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800'
+                                    ? 'bg-white text-black border-white'
+                                    : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800'
                                     }`}
                             >
                                 <div className="font-bold text-lg">{option.label}</div>
@@ -135,8 +135,8 @@ export default function SetupPage() {
                                 key={option.id}
                                 onClick={() => setFormData({ ...formData, level: option.id })}
                                 className={`w-full p-4 rounded-2xl border text-left transition-all ${formData.level === option.id
-                                        ? 'bg-white text-black border-white'
-                                        : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800'
+                                    ? 'bg-white text-black border-white'
+                                    : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800'
                                     }`}
                             >
                                 <div className="font-bold text-lg">{option.label}</div>
@@ -152,8 +152,8 @@ export default function SetupPage() {
                                 key={option.id}
                                 onClick={() => toggleEquipment(option.id)}
                                 className={`w-full p-4 rounded-2xl border flex justify-between items-center transition-all ${formData.equipment.includes(option.id)
-                                        ? 'bg-white text-black border-white'
-                                        : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800'
+                                    ? 'bg-white text-black border-white'
+                                    : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800'
                                     }`}
                             >
                                 <span className="font-bold text-lg">{option.label}</span>
