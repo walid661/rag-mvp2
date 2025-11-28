@@ -14,9 +14,10 @@ interface CoachChatDrawerProps {
     isOpen: boolean
     onClose: () => void
     exerciseName?: string
+    contextText?: string
 }
 
-export default function CoachChatDrawer({ isOpen, onClose, exerciseName }: CoachChatDrawerProps) {
+export default function CoachChatDrawer({ isOpen, onClose, exerciseName, contextText }: CoachChatDrawerProps) {
     const [messages, setMessages] = useState<Message[]>([])
     const [input, setInput] = useState('')
     const [loading, setLoading] = useState(false)
@@ -24,12 +25,16 @@ export default function CoachChatDrawer({ isOpen, onClose, exerciseName }: Coach
     const supabase = createClient()
 
     useEffect(() => {
-        if (isOpen && exerciseName) {
-            setMessages([
-                { role: 'assistant', content: `Hello Champion! I see you're looking at **${exerciseName}**. How can I help you with this exercise?` }
-            ])
+        if (isOpen) {
+            // Reset messages or keep history? For now, let's keep it simple.
+            // If we wanted to persist chat, we'd need a backend endpoint for that.
+            if (messages.length === 0) {
+                setMessages([
+                    { role: 'assistant', content: `Hello Champion! I'm ready to help you with this plan. What's on your mind?` }
+                ])
+            }
         }
-    }, [isOpen, exerciseName])
+    }, [isOpen])
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -47,7 +52,7 @@ export default function CoachChatDrawer({ isOpen, onClose, exerciseName }: Coach
             const { data: { session } } = await supabase.auth.getSession()
             if (!session) return
 
-            const response = await chatCoach(session.access_token, userMsg, { exercise: exerciseName })
+            const response = await chatCoach(session.access_token, userMsg, { exercise: exerciseName }, contextText)
 
             setMessages(prev => [...prev, { role: 'assistant', content: response.answer }])
         } catch (err) {
@@ -94,8 +99,8 @@ export default function CoachChatDrawer({ isOpen, onClose, exerciseName }: Coach
                         >
                             <div
                                 className={`max-w-[80%] p-4 rounded-2xl ${msg.role === 'user'
-                                        ? 'bg-white text-black rounded-tr-none'
-                                        : 'bg-zinc-800 text-white rounded-tl-none'
+                                    ? 'bg-white text-black rounded-tr-none'
+                                    : 'bg-zinc-800 text-white rounded-tl-none'
                                     }`}
                             >
                                 <p className="whitespace-pre-wrap text-sm">{msg.content}</p>

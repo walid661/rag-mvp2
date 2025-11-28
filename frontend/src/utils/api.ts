@@ -18,7 +18,7 @@ export async function generateProgram(token: string, body: any = {}) {
     return res.json()
 }
 
-export async function chatCoach(token: string, query: string, context?: any) {
+export async function chatCoach(token: string, query: string, context?: any, context_text?: string) {
     const res = await fetch(`${API_URL}/chat_coach`, {
         method: 'POST',
         headers: {
@@ -27,7 +27,8 @@ export async function chatCoach(token: string, query: string, context?: any) {
         },
         body: JSON.stringify({
             query,
-            context_exercise: context
+            context_exercise: context,
+            context_text: context_text
         })
     })
 
