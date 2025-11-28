@@ -18,15 +18,15 @@ export default function GeneratorPage() {
         const fetchPlan = async () => {
             try {
                 const supabase = createClient()
-                const { data: { user } } = await supabase.auth.getUser()
+                const { data: { session } } = await supabase.auth.getSession()
 
-                if (!user) {
+                if (!session) {
                     router.push('/login')
                     return
                 }
 
                 // Call the new LLM-based generation endpoint
-                const data = await generateProgram({})
+                const data = await generateProgram(session.access_token, {})
 
                 if (data.plan_text) {
                     setPlanText(data.plan_text)

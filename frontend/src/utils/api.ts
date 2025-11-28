@@ -1,12 +1,13 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-export async function generateProgram(token: string) {
+export async function generateProgram(token: string, body: any = {}) {
     const res = await fetch(`${API_URL}/generate_plan`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify(body)
     })
 
     if (!res.ok) {
