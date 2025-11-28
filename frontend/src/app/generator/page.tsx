@@ -51,7 +51,18 @@ export default function GeneratorPage() {
             const supabase = createClient()
             const { data: { user } } = await supabase.auth.getUser()
 
-            if (!user) return
+            if (!user) {
+                alert("User not found. Please log in.")
+                return
+            }
+
+            const payload = {
+                user_id: user.id,
+                title: `Weekly Plan - ${new Date().toLocaleDateString()}`,
+                program_data: { text: planText }
+            }
+
+            console.log("Saving plan...", payload)
 
             const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/save_program`, {
                 method: 'POST',
@@ -59,20 +70,20 @@ export default function GeneratorPage() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
                 },
-                body: JSON.stringify({
-                    user_id: user.id,
-                    title: `Weekly Plan - ${new Date().toLocaleDateString()}`,
-                    program_data: { text: planText }
-                })
+                body: JSON.stringify(payload)
             })
 
-            if (!response.ok) throw new Error('Failed to save')
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.detail || 'Failed to save')
+            }
 
+            console.log("Save success")
             alert("Plan saved successfully!")
-            router.push('/dashboard') // Redirect to dashboard or saved plans
+            router.push('/dashboard')
         } catch (err) {
             console.error("Save error:", err)
-            alert("Failed to save plan.")
+            alert("Failed to save plan. Check console for details.")
         } finally {
             setSaving(false)
         }
