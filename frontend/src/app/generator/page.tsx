@@ -74,7 +74,7 @@ export default function GeneratorPage() {
             console.log("Save success")
             alert("Plan saved successfully!")
             router.push('/dashboard')
-        } catch (err) {
+        } catch (err: any) {
             console.error("Save error:", err)
             alert(`Failed to save plan: ${err.message || err}`)
         } finally {
