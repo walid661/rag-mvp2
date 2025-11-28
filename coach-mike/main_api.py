@@ -233,5 +233,78 @@ async def chat_coach_endpoint(
         print(f"Chat Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- SAVED PROGRAMS ENDPOINTS ---
+
+class ProgramCreateRequest(BaseModel):
+    title: str
+    content: str  # Markdown text
+
+@app.post("/api/programs")
+async def create_program(
+    request: ProgramCreateRequest,
+    user: dict = Depends(verify_supabase_token)
+):
+    """
+    Saves a new program.
+    """
+    try:
+        data = {
+            "user_id": user["id"],
+            "title": request.title,
+            "program_data": {"text": request.content},
+            "created_at": "now()"
+        }
+        response = supabase.table("saved_programs").insert(data).execute()
+        return {"status": "success", "data": response.data[0] if response.data else None}
+    except Exception as e:
+        print(f"Create Program Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create program: {str(e)}")
+
+@app.get("/api/programs")
+async def list_programs(
+    user: dict = Depends(verify_supabase_token)
+):
+    """
+    Returns a list of all programs for the authenticated user.
+    """
+    try:
+        response = supabase.table("saved_programs")\
+            .select("id, title, created_at")\
+            .eq("user_id", user["id"])\
+            .order("created_at", desc=True)\
+            .execute()
+        
+        return {"data": response.data}
+    except Exception as e:
+        print(f"List Programs Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list programs: {str(e)}")
+
+@app.get("/api/programs/{program_id}")
+async def get_program(
+    program_id: str,
+    user: dict = Depends(verify_supabase_token)
+):
+    """
+    Returns the full content of a specific program.
+    """
+    try:
+        response = supabase.table("saved_programs")\
+            .select("*")\
+            .eq("id", program_id)\
+            .eq("user_id", user["id"])\
+            .execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Program not found")
+            
+        program = response.data[0]
+        # Extract markdown content for convenience, but return full object
+        content = program.get("program_data", {}).get("text", "")
+        
+        return {"data": program, "content": content}
+    except Exception as e:
+        print(f"Get Program Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get program: {str(e)}")
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
