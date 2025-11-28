@@ -115,12 +115,18 @@ async def verify_supabase_token(authorization: str = Header(None)) -> Dict[str, 
 def health_check():
     return {"status": "active", "service": "Coach Mike AI"}
 
+class SaveProgramRequest(BaseModel):
+    user_id: str
+    title: str
+    program_data: Dict[str, Any]
+
 @app.post("/generate_plan")
 async def generate_plan_endpoint(
-    user: dict = Depends(verify_supabase_token)
+    user: dict = Depends(verify_supabase_token),
+    request_body: Optional[PlanRequest] = Body(None)
 ):
     """
-    Generates a weekly training plan based on the user's profile in Supabase.
+    Generates a weekly training plan using RAG and LLM (Markdown output).
     """
     user_id = user["id"]
     print(f"📝 Generating plan for User: {user_id}")
@@ -133,30 +139,66 @@ async def generate_plan_endpoint(
         
         profile_data = response.data[0]
         
-        # Map DB fields to Script expected format
-        # DB: level, goal, equipment (json), days_per_week
-        # Script expects: level, goal, schedule, equipment (list)
-        script_profile = {
-            "level": profile_data.get("level", "Intermédiaire"),
-            "goal": profile_data.get("goal", "Renforcement"),
-            "schedule": profile_data.get("days_per_week", 3),
-            "equipment": profile_data.get("equipment", [])
-        }
+        level = profile_data.get("level", "Intermédiaire")
+        goal = profile_data.get("goal", "Renforcement")
+        equipment = profile_data.get("equipment", [])
+        schedule = profile_data.get("days_per_week", 3)
         
     except Exception as e:
         print(f"DB Error: {e}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-    # 2. Call Planner Agent Logic
+    # 2. Construct Prompt
+    equipment_str = ", ".join(equipment) if equipment else "Bodyweight only"
+    prompt = (
+        f"Act as Coach Mike. Create a detailed 1-week training plan for a {level} user "
+        f"who wants to {goal}. Equipment available: {equipment_str}. "
+        f"Schedule: {schedule} days per week. "
+        f"Use the retrieved documents to pick specific exercises and methods. "
+        f"Output the plan in nicely formatted Markdown."
+    )
+
+    # 3. RAG Generation
     try:
-        plan = generate_weekly_plan(script_profile)
-        if "error" in plan:
-            raise HTTPException(status_code=400, detail=plan["error"])
+        # Retrieve relevant docs (Mesocycles, Microcycles)
+        # We use a broad query to get relevant training blocks
+        retrieval_query = f"{goal} plan for {level} level using {equipment_str}"
+        filters = build_filters(stage="auto", profile=profile_data, extra={"query": retrieval_query})
         
-        return plan
+        retrieved_docs = retriever.retrieve(retrieval_query, top_k=5, filters=filters)
+        
+        # Generate Plan
+        result = generator.generate(prompt, retrieved_docs)
+        
+        return {"plan_text": result["answer"]}
+        
     except Exception as e:
-        print(f"Planner Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Planning failed: {str(e)}")
+        print(f"RAG Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Plan generation failed: {str(e)}")
+
+@app.post("/save_program")
+async def save_program_endpoint(
+    request: SaveProgramRequest,
+    user: dict = Depends(verify_supabase_token)
+):
+    """
+    Saves the generated program to Supabase.
+    """
+    if user["id"] != request.user_id:
+        raise HTTPException(status_code=403, detail="User ID mismatch")
+
+    try:
+        data = {
+            "user_id": request.user_id,
+            "title": request.title,
+            "program_data": request.program_data,
+            "created_at": "now()"
+        }
+        response = supabase.table("saved_programs").insert(data).execute()
+        return {"status": "success", "data": response.data}
+    except Exception as e:
+        print(f"Save Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save program: {str(e)}")
 
 @app.post("/chat_coach")
 async def chat_coach_endpoint(
