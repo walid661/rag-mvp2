@@ -51,8 +51,8 @@ Question: {query}
 
 Provide a concise, actionable answer and list relevant exercises/programs. Cite your sources."""
 
-    def _get_system_prompt(self) -> str:
-        return """
+    def _get_system_prompt(self, context_text: str = None) -> str:
+        base_prompt = """
         You are "Coach Mike", an expert fitness coach. Your goal is NOT to summarize documents, but to BUILD concrete training plans.
 
         **YOUR DATA SOURCES:**
@@ -81,14 +81,19 @@ Provide a concise, actionable answer and list relevant exercises/programs. Cite 
         Let's get to work!"
         """
 
-    def generate(self, query: str, retrieved_docs: List[Dict]) -> Dict:
+        if context_text:
+            base_prompt += f"\n\n**CURRENT PROGRAM CONTEXT:**\nThe user is looking at this specific training plan:\n\n{context_text}\n\nAnswer their question based on this plan. If they ask about technique, use your RAG knowledge (Qdrant) to explain the exercise listed in the plan."
+
+        return base_prompt
+
+    def generate(self, query: str, retrieved_docs: List[Dict], context_text: str = None) -> Dict:
         context = self._pack_context(retrieved_docs, self.max_context_tokens)
         prompt = self._build_prompt(query, context)
         
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": self._get_system_prompt()},
+                {"role": "system", "content": self._get_system_prompt(context_text)},
                 {"role": "user", "content": prompt}
             ],
             temperature=self.temperature,
