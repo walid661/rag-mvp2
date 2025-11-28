@@ -56,26 +56,19 @@ export default function GeneratorPage() {
                 return
             }
 
-            const payload = {
-                user_id: user.id,
-                title: `Weekly Plan - ${new Date().toLocaleDateString()}`,
-                program_data: { text: planText }
-            }
+            console.log("Saving plan directly to Supabase...", { user_id: user.id, title: `Weekly Plan - ${new Date().toLocaleDateString()}` })
 
-            console.log("Saving plan...", payload)
+            const { error } = await supabase
+                .from('saved_programs')
+                .insert({
+                    user_id: user.id,
+                    title: `Weekly Plan - ${new Date().toLocaleDateString()}`,
+                    program_data: { text: planText },
+                    status: 'active'
+                })
 
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/save_program`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-                },
-                body: JSON.stringify(payload)
-            })
-
-            if (!response.ok) {
-                const errorData = await response.json()
-                throw new Error(errorData.detail || 'Failed to save')
+            if (error) {
+                throw error
             }
 
             console.log("Save success")
@@ -83,7 +76,7 @@ export default function GeneratorPage() {
             router.push('/dashboard')
         } catch (err) {
             console.error("Save error:", err)
-            alert("Failed to save plan. Check console for details.")
+            alert(`Failed to save plan: ${err.message || err}`)
         } finally {
             setSaving(false)
         }
