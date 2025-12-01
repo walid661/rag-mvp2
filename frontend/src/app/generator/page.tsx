@@ -48,6 +48,7 @@ export default function GeneratorPage() {
         if (!planText) return
         setSaving(true)
         try {
+            // Step 1: Get the current user
             const supabase = createClient()
             const { data: { user } } = await supabase.auth.getUser()
 
@@ -56,6 +57,7 @@ export default function GeneratorPage() {
                 return
             }
 
+            // Step 2: Insert directly into the table
             console.log("Saving plan directly to Supabase...", { user_id: user.id, title: `Weekly Plan - ${new Date().toLocaleDateString()}` })
 
             const { error } = await supabase
@@ -67,12 +69,15 @@ export default function GeneratorPage() {
                     status: 'active'
                 })
 
+            // Step 3: Handle Errors explicitly
             if (error) {
-                throw error
+                console.error("Supabase Insert Error:", error)
+                throw new Error(error.message || "Database insert failed")
             }
 
+            // Step 4: Redirect ONLY if successful
             console.log("Save success")
-            alert("Plan saved successfully!")
+            alert("Plan Saved!")
             router.push('/dashboard')
         } catch (err: any) {
             console.error("Save error:", err)
