@@ -70,9 +70,9 @@ export default function ProgramViewer({ content }: ProgramViewerProps) {
 
     // Calculate Progress
     const { totalTasks, completedTasks, progressPercentage } = useMemo(() => {
-        // Count total occurrences of "- [ ]" or "- [x]" in the raw content
-        // Relaxed regex to handle variable spacing: - [ ] or -[ ]
-        const taskRegex = /-\s*\[\s*[xX]?\s*\]/g
+        // Count total occurrences of "[ ]" or "- [ ]"
+        // Regex: Optional dash, optional whitespace, brackets with optional x
+        const taskRegex = /(?:^|\n)\s*(?:-\s*)?\[\s*[xX]?\s*\]/g
         const match = content.match(taskRegex)
         const total = match ? match.length : 0
         const completed = Object.values(checkedState).filter(Boolean).length
@@ -101,8 +101,8 @@ export default function ProgramViewer({ content }: ProgramViewerProps) {
             <div className="space-y-4">
                 {lines.map((line, index) => {
                     // Check if line is a task
-                    // Matches: "- [ ] Task", "- [x] Task", "-[ ] Task"
-                    const taskMatch = line.match(/^-\s*\[\s*[xX]?\s*\]\s*(.*)/)
+                    // Matches: "- [ ]", "[ ]", "-[ ]"
+                    const taskMatch = line.match(/^\s*(?:-\s*)?\[\s*[xX]?\s*\]\s*(.*)/)
 
                     if (taskMatch) {
                         // Generate a unique ID for this task based on the section and its order
