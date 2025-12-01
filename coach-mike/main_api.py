@@ -66,14 +66,10 @@ app = FastAPI(title="Coach Mike AI Microservice", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://rag-mvp2-9snj.vercel.app",
-        "https://rag-mvp2.vercel.app",
-    ],
+    allow_origins=["*"],  # Allows all origins
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
 )
 
 # --- MODELS ---
