@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { generateProgram } from '@/utils/api'
-import { Loader2, Save, RefreshCw, ArrowLeft } from 'lucide-react'
+import { Loader2, Save, RefreshCw, ArrowLeft, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 export default function GeneratorPage() {
@@ -13,6 +13,10 @@ export default function GeneratorPage() {
     const [planText, setPlanText] = useState<string | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [saving, setSaving] = useState(false)
+
+    // Modal State
+    const [showSaveModal, setShowSaveModal] = useState(false)
+    const [programTitle, setProgramTitle] = useState('')
 
     useEffect(() => {
         const fetchPlan = async () => {
@@ -30,6 +34,8 @@ export default function GeneratorPage() {
 
                 if (data.plan_text) {
                     setPlanText(data.plan_text)
+                    // Set default title
+                    setProgramTitle(`Weekly Plan - ${new Date().toLocaleDateString()}`)
                 } else {
                     setError("Received empty plan from coach.")
                 }
@@ -44,7 +50,12 @@ export default function GeneratorPage() {
         fetchPlan()
     }, [router])
 
-    const handleSave = async () => {
+    const handleSaveClick = () => {
+        if (!planText) return
+        setShowSaveModal(true)
+    }
+
+    const confirmSave = async () => {
         if (!planText) return
         setSaving(true)
         try {
@@ -58,13 +69,13 @@ export default function GeneratorPage() {
             }
 
             // Step 2: Insert directly into the table
-            console.log("Saving plan directly to Supabase...", { user_id: user.id, title: `Weekly Plan - ${new Date().toLocaleDateString()}` })
+            console.log("Saving plan directly to Supabase...", { user_id: user.id, title: programTitle })
 
             const { error } = await supabase
                 .from('saved_programs')
                 .insert({
                     user_id: user.id,
-                    title: `Weekly Plan - ${new Date().toLocaleDateString()}`,
+                    title: programTitle || `Weekly Plan - ${new Date().toLocaleDateString()}`,
                     program_data: { text: planText },
                     status: 'active'
                 })
@@ -77,13 +88,11 @@ export default function GeneratorPage() {
 
             // Step 4: Redirect ONLY if successful
             console.log("Save success")
-            alert("Plan Saved!")
             router.push('/dashboard')
         } catch (err: any) {
             console.error("Save error:", err)
             alert(`Failed to save plan: ${err.message || err}`)
-        } finally {
-            setSaving(false)
+            setSaving(false) // Only reset if error, success redirects
         }
     }
 
@@ -117,7 +126,7 @@ export default function GeneratorPage() {
     }
 
     return (
-        <div className="min-h-screen bg-black text-white p-4 md:p-8">
+        <div className="min-h-screen bg-black text-white p-4 md:p-8 relative">
             <div className="max-w-4xl mx-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">
@@ -129,12 +138,12 @@ export default function GeneratorPage() {
                     </button>
                     <h1 className="text-2xl font-bold">Your Custom Plan</h1>
                     <button
-                        onClick={handleSave}
+                        onClick={handleSaveClick}
                         disabled={saving}
                         className="bg-white text-black px-6 py-3 rounded-full font-bold hover:bg-gray-200 transition-colors flex items-center gap-2 disabled:opacity-50"
                     >
-                        {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
-                        {saving ? 'Saving...' : 'Save & Start'}
+                        <Save size={20} />
+                        Save & Start
                     </button>
                 </div>
 
@@ -145,6 +154,52 @@ export default function GeneratorPage() {
                     </article>
                 </div>
             </div>
+
+            {/* Save Modal */}
+            {showSaveModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-bold">Name your program</h3>
+                            <button
+                                onClick={() => setShowSaveModal(false)}
+                                className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
+                            >
+                                <X size={20} className="text-gray-400" />
+                            </button>
+                        </div>
+
+                        <div className="mb-8">
+                            <label className="block text-sm text-gray-400 mb-2">Program Title</label>
+                            <input
+                                type="text"
+                                value={programTitle}
+                                onChange={(e) => setProgramTitle(e.target.value)}
+                                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-white focus:border-transparent outline-none transition-all"
+                                placeholder="e.g. Summer Shred 2025"
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowSaveModal(false)}
+                                className="flex-1 py-3 rounded-xl font-bold text-gray-400 hover:bg-zinc-800 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={confirmSave}
+                                disabled={saving || !programTitle.trim()}
+                                className="flex-1 bg-white text-black py-3 rounded-xl font-bold hover:bg-gray-200 transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
+                            >
+                                {saving && <Loader2 size={18} className="animate-spin" />}
+                                {saving ? 'Saving...' : 'Confirm Save'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

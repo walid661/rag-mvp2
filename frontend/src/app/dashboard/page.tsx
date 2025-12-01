@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import {
-    Plus, Calendar, ChevronRight, Loader2, Dumbbell
+    Plus, Calendar, ChevronRight, Loader2, Dumbbell, Trash2
 } from 'lucide-react'
 
 export default function DashboardPage() {
@@ -40,6 +40,32 @@ export default function DashboardPage() {
 
         fetchPrograms()
     }, [router])
+
+    const handleDelete = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation() // Prevent navigation when clicking delete
+
+        if (!window.confirm("Are you sure you want to delete this plan? This action cannot be undone.")) {
+            return
+        }
+
+        // Optimistic update
+        setPrograms(prev => prev.filter(p => p.id !== id))
+
+        try {
+            const { error } = await supabase
+                .from('saved_programs')
+                .delete()
+                .eq('id', id)
+
+            if (error) {
+                throw error
+            }
+        } catch (error) {
+            console.error("Failed to delete program", error)
+            alert("Failed to delete program. Please refresh.")
+            // Revert optimistic update if needed, but for MVP simple alert is okay
+        }
+    }
 
     if (loading) return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -86,11 +112,11 @@ export default function DashboardPage() {
                         <div
                             key={program.id}
                             onClick={() => router.push(`/program/${program.id}`)}
-                            className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-3xl flex items-center justify-between active:bg-zinc-800 transition-all cursor-pointer group touch-manipulation"
+                            className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-3xl flex items-center justify-between active:bg-zinc-800 transition-all cursor-pointer group touch-manipulation relative overflow-hidden"
                         >
                             <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <h3 className="font-bold text-lg text-white group-hover:text-gray-200 transition-colors">
+                                    <h3 className="font-bold text-lg text-white group-hover:text-gray-200 transition-colors pr-8">
                                         {program.title}
                                     </h3>
                                     {program.status === 'active' && (
@@ -108,8 +134,18 @@ export default function DashboardPage() {
                                     })}
                                 </div>
                             </div>
-                            <div className="w-10 h-10 bg-zinc-800 rounded-full flex items-center justify-center text-gray-400 group-hover:bg-white group-hover:text-black transition-all ml-4">
-                                <ChevronRight size={20} />
+
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={(e) => handleDelete(e, program.id)}
+                                    className="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all z-10"
+                                    title="Delete Program"
+                                >
+                                    <Trash2 size={18} />
+                                </button>
+                                <div className="w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center text-gray-400 group-hover:bg-white group-hover:text-black transition-all">
+                                    <ChevronRight size={18} />
+                                </div>
                             </div>
                         </div>
                     ))
