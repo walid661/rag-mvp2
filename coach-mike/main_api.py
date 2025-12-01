@@ -67,7 +67,7 @@ app = FastAPI(title="Coach Mike AI Microservice", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
+    allow_credentials=False, # Must be False when using wildcard "*"
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
