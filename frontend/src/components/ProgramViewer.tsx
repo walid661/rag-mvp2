@@ -70,9 +70,9 @@ export default function ProgramViewer({ content }: ProgramViewerProps) {
 
     // Calculate Progress
     const { totalTasks, completedTasks, progressPercentage } = useMemo(() => {
-        // Count total occurrences of "- [ ]" in the raw content
-        // We assume the prompt strictly outputs "- [ ]"
-        const taskRegex = /- \[ \] /g
+        // Count total occurrences of "- [ ]" or "- [x]" in the raw content
+        // Relaxed regex to handle variable spacing: - [ ] or -[ ]
+        const taskRegex = /-\s*\[\s*[xX]?\s*\]/g
         const match = content.match(taskRegex)
         const total = match ? match.length : 0
         const completed = Object.values(checkedState).filter(Boolean).length
@@ -101,7 +101,8 @@ export default function ProgramViewer({ content }: ProgramViewerProps) {
             <div className="space-y-4">
                 {lines.map((line, index) => {
                     // Check if line is a task
-                    const taskMatch = line.match(/^- \[ \] (.*)/)
+                    // Matches: "- [ ] Task", "- [x] Task", "-[ ] Task"
+                    const taskMatch = line.match(/^-\s*\[\s*[xX]?\s*\]\s*(.*)/)
 
                     if (taskMatch) {
                         // Generate a unique ID for this task based on the section and its order
@@ -131,12 +132,6 @@ export default function ProgramViewer({ content }: ProgramViewerProps) {
                             </div>
                         )
                     }
-
-                    // Render normal markdown for non-task lines
-                    // We group consecutive non-task lines? 
-                    // For simplicity, we render line by line, but this might break block elements.
-                    // Better: If it's not a task, just render it.
-                    // Ideally we should group non-task blocks.
 
                     // Simple heuristic: If it's a cue (starts with * Cue: or similar indentation), render it nicely
                     if (line.trim().startsWith('* Cue:') || line.trim().startsWith('*')) {
