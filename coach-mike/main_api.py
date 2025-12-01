@@ -69,10 +69,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://rag-mvp2-9snj.vercel.app",
-        "https://rag-mvp2.vercel.app", # Adding alias just in case
-        "*" # Keep * for now as fallback if specific origins fail, though strict browsers might still complain if credentials are used. 
-        # Actually, standard practice with credentials=True is NO wildcard. 
-        # But let's try specific list first.
+        "https://rag-mvp2.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
