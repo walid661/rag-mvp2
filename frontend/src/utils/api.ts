@@ -5,7 +5,8 @@ export async function generateProgram(token: string, body: any = {}) {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true' // Bypass Ngrok warning page
         },
         body: JSON.stringify(body)
     })
@@ -23,7 +24,8 @@ export async function chatCoach(token: string, query: string, context?: any, con
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true' // Bypass Ngrok warning page
         },
         body: JSON.stringify({
             query,
