@@ -18,6 +18,8 @@ const LEVELS = [
     { id: 'advanced', label: 'Advanced', desc: '2+ years exp' },
 ]
 
+const FREQUENCY = [2, 3, 4, 5, 6]
+
 const EQUIPMENT = [
     { id: 'bodyweight', label: 'Bodyweight' },
     { id: 'dumbbell', label: 'Dumbbells' },
@@ -40,7 +42,7 @@ export default function SetupPage() {
     })
 
     const handleNext = async () => {
-        if (step < 3) {
+        if (step < 4) {
             setStep(step + 1)
         } else {
             await handleSubmit()
@@ -94,7 +96,7 @@ export default function SetupPage() {
             <div className="w-full h-1 bg-zinc-900">
                 <div
                     className="h-full bg-white transition-all duration-300"
-                    style={{ width: `${(step / 3) * 100}%` }}
+                    style={{ width: `${(step / 4) * 100}%` }}
                 />
             </div>
 
@@ -103,12 +105,14 @@ export default function SetupPage() {
                     <h1 className="text-3xl font-bold mb-2">
                         {step === 1 && "What's your goal?"}
                         {step === 2 && "Experience level?"}
-                        {step === 3 && "Equipment?"}
+                        {step === 3 && "How often?"}
+                        {step === 4 && "Equipment?"}
                     </h1>
                     <p className="text-gray-400 mb-8">
                         {step === 1 && "We'll tailor the intensity based on this."}
                         {step === 2 && "Be honest, we want to avoid injury."}
-                        {step === 3 && "Select all that apply."}
+                        {step === 3 && "Days per week you can commit."}
+                        {step === 4 && "Select all that apply."}
                     </p>
 
                     <div className="space-y-3">
@@ -146,8 +150,29 @@ export default function SetupPage() {
                             </button>
                         ))}
 
-                        {/* STEP 3: EQUIPMENT */}
-                        {step === 3 && EQUIPMENT.map(option => (
+                        {/* STEP 3: FREQUENCY */}
+                        {step === 3 && (
+                            <div className="grid grid-cols-3 gap-3">
+                                {FREQUENCY.map(days => (
+                                    <button
+                                        key={days}
+                                        onClick={() => setFormData({ ...formData, days_per_week: days })}
+                                        className={`p-6 rounded-2xl border text-center transition-all ${formData.days_per_week === days
+                                            ? 'bg-white text-black border-white'
+                                            : 'bg-zinc-900 border-zinc-800 hover:bg-zinc-800'
+                                            }`}
+                                    >
+                                        <div className="font-bold text-3xl mb-1">{days}</div>
+                                        <div className={`text-xs uppercase font-bold tracking-wider ${formData.days_per_week === days ? 'text-gray-600' : 'text-gray-500'}`}>
+                                            Days
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* STEP 4: EQUIPMENT */}
+                        {step === 4 && EQUIPMENT.map(option => (
                             <button
                                 key={option.id}
                                 onClick={() => toggleEquipment(option.id)}
@@ -179,13 +204,14 @@ export default function SetupPage() {
                         disabled={
                             (step === 1 && !formData.goal) ||
                             (step === 2 && !formData.level) ||
-                            (step === 3 && formData.equipment.length === 0) ||
+                            (step === 3 && !formData.days_per_week) ||
+                            (step === 4 && formData.equipment.length === 0) ||
                             loading
                         }
                         className="flex-1 p-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-200 disabled:opacity-50 flex justify-center items-center gap-2"
                     >
-                        {loading ? <Loader2 className="animate-spin" /> : (step === 3 ? 'Finish Setup' : 'Next')}
-                        {!loading && step < 3 && <ChevronRight size={20} />}
+                        {loading ? <Loader2 className="animate-spin" /> : (step === 4 ? 'Finish Setup' : 'Next')}
+                        {!loading && step < 4 && <ChevronRight size={20} />}
                     </button>
                 </div>
             </div>

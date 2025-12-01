@@ -79,8 +79,8 @@ class ChatRequest(BaseModel):
     context_text: Optional[str] = None
 
 class PlanRequest(BaseModel):
+    days_per_week: Optional[int] = None
     # We might accept overrides here, but primarily we use the DB profile
-    pass
 
 class SaveProgramRequest(BaseModel):
     user_id: str
@@ -142,7 +142,13 @@ async def generate_plan_endpoint(
         level = profile_data.get("level", "Intermédiaire")
         goal = profile_data.get("goal", "Renforcement")
         equipment = profile_data.get("equipment", [])
-        schedule = profile_data.get("days_per_week", 3)
+        
+        # Determine schedule: Use request override OR DB profile OR default to 3
+        schedule = 3
+        if request_body and request_body.days_per_week:
+            schedule = request_body.days_per_week
+        else:
+            schedule = profile_data.get("days_per_week", 3)
         
     except Exception as e:
         print(f"DB Error: {e}")

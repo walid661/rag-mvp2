@@ -792,62 +792,78 @@ def build_filters(
     f: Dict[str, Any] = {}
 
     if stage == "auto":
-        # Mode RAG sémantique pur : pas de filtres restrictifs sur domain/type
-        # Laisser l'embedding trouver les meilleurs documents, peu importe leur type
+        # Mode RAG sémantique AVEC FILTRES STRICTS (Hard Filtering)
         f = {
-            "should": [],  # Filtres optionnels pour affiner
-            "must": [],    # Filtres obligatoires pour critères essentiels
+            "should": [],
+            "must": [],
             "must_not": []
         }
         
         query = extra.get("query", "").lower() if extra else ""
         
-        # Détection du type de requête : programme vs exercices
+        # 1. Détection du type de requête : programme vs exercices
         is_program_request = any(kw in query for kw in [
             "programme", "plan", "semaine", "semaines", "cycle", "meso", "micro",
             "planning", "plan d'entraînement", "programme d'entraînement", "4 semaines", "3 semaines"
         ])
         
-        # AMÉLIORATION : Rendre domain=program obligatoire (must) pour les requêtes de programme
-        # Cela garantit qu'on trouve des programmes et pas des exercices
         if is_program_request:
             f["must"].append({"key": "domain", "match": {"value": "program"}})
-            print(f"[MAPPING] Détection requête 'programme' → filtre MUST domain=program (obligatoire)")
-        
-        # Filtres d'affinage optionnels (should) pour aider sans restreindre
-        # 1. Niveau / Difficulty level
+            print(f"[MAPPING] Détection requête 'programme' → filtre MUST domain=program")
+
+        # 2. HARD FILTERING: Équipement (Strict Enforcement)
+        # L'utilisateur ne doit voir QUE ce qu'il peut faire avec son matériel (+ Poids du corps)
         if profile:
-            niveau_val = _normalize_profile_key("niveau_sportif", profile) or _normalize_profile_key("niveau", profile)
-            if niveau_val:
-                niveau_norm = _normalize_niveau(str(niveau_val))
-                # Pour les meso/micro
-                f["should"].append({"key": "niveau", "match": {"value": niveau_norm}})
-                # Pour les exercices (mapping vers difficulty_level)
-                difficulty_mapping = {
-                    "débutant": "Débutant",
-                    "intermédiaire": "Intermédiaire",
-                    "avancé": "Avancé",
-                    "expert": "Expert"
-                }
-                difficulty = difficulty_mapping.get(niveau_norm.lower(), niveau_norm)
-                f["should"].append({"key": "difficulty_level", "match": {"value": difficulty}})
-                print(f"[MAPPING] filtre niveau={niveau_norm} (optionnel)")
-            
-            # 2. Équipement (optionnel)
-            equipment_val = _normalize_profile_key("equipment", profile) or _normalize_profile_key("materiel", profile) or _normalize_profile_key("matériel", profile)
+            equipment_val = _normalize_profile_key("equipment", profile) or _normalize_profile_key("materiel", profile)
             if equipment_val:
+                # Normalisation
                 if isinstance(equipment_val, list):
                     equipment_normalized = []
                     for eq in equipment_val:
-                        normalized = _normalize_materiel(eq)
-                        equipment_normalized.extend(normalized)
+                        equipment_normalized.extend(_normalize_materiel(eq))
                     equipment_normalized = list(set(equipment_normalized))
                 else:
                     equipment_normalized = list(set(_normalize_materiel(equipment_val)))
                 
-                for eq in equipment_normalized:
-                    # Pour les exercices (nouveau format)
-                    f["should"].append({"key": "primary_equipment", "match": {"value": eq}})
+                # Toujours autoriser "Poids du corps" et "Aucun"
+                allowed_equipment = set(equipment_normalized)
+                allowed_equipment.add("Poids du corps")
+                allowed_equipment.add("Aucun")
+                allowed_equipment.add("None") # Au cas où
+                
+                # Construction du filtre OR (l'exercice doit matcher L'UN des équipements autorisés)
+                # Qdrant: "must" contain at least one "should" clause
+                equipment_should_clauses = [
+                    {"key": "primary_equipment", "match": {"value": eq}} 
+                    for eq in allowed_equipment
+                ]
+                
+                # Ajouter aussi le champ "materiel" (ancien format) pour compatibilité
+                for eq in allowed_equipment:
+                     equipment_should_clauses.append({"key": "materiel", "match": {"value": eq}})
+
+                # On ajoute une clause MUST qui contient un groupe de SHOULD (Nested Filter logic)
+                # Cela signifie : (primary_equipment == Band OR primary_equipment == Bodyweight ...)
+                # Note: Qdrant Python client structure might vary, but standard dict structure for "filter" is:
+                # { "must": [ { "should": [ ... ] } ] }
+                f["must"].append({"should": equipment_should_clauses})
+                
+                print(f"[HARD FILTER] Équipement autorisé : {allowed_equipment}")
+
+            # 3. HARD FILTERING: Niveau (Safety)
+            # Si débutant, interdire "Expert" et "Avancé"
+            niveau_val = _normalize_profile_key("niveau_sportif", profile) or _normalize_profile_key("niveau", profile)
+            if niveau_val:
+                niveau_norm = _normalize_niveau(str(niveau_val))
+                
+                if niveau_norm == "Débutant":
+                    f["must_not"].append({"key": "difficulty_level", "match": {"value": "Expert"}})
+                    f["must_not"].append({"key": "difficulty_level", "match": {"value": "Avancé"}})
+                    f["must_not"].append({"key": "niveau", "match": {"value": "Expert"}}) # Ancien format
+                    print(f"[HARD FILTER] Niveau Débutant → Exclusion Expert/Avancé")
+                
+                # Boost sémantique (Should) pour le niveau exact
+                f["should"].append({"key": "difficulty_level", "match": {"value": niveau_norm}})
                     # Pour compatibilité (ancien format)
                     f["should"].append({"key": "equipment", "match": {"value": eq}})
                     f["should"].append({"key": "materiel", "match": {"value": eq}})
