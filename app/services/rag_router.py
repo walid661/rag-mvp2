@@ -864,10 +864,7 @@ def build_filters(
                 
                 # Boost sémantique (Should) pour le niveau exact
                 f["should"].append({"key": "difficulty_level", "match": {"value": niveau_norm}})
-                    # Pour compatibilité (ancien format)
-                    f["should"].append({"key": "equipment", "match": {"value": eq}})
-                    f["should"].append({"key": "materiel", "match": {"value": eq}})
-                print(f"[MAPPING] filtres équipement={equipment_normalized} (optionnels)")
+
         
         # 3. Détection sémantique des groupes musculaires depuis la query
         # SOLUTION 1 : Les filtres sont maintenant SHOULD (optionnels) pour ne pas bloquer la recherche sémantique
