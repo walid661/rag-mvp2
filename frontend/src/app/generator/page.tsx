@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { generateProgram } from '@/utils/api'
 import { Loader2, Save, RefreshCw, ArrowLeft, X } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import ProgramViewer from '@/components/ProgramViewer'
 
 export default function GeneratorPage() {
     const router = useRouter()
@@ -148,10 +148,8 @@ export default function GeneratorPage() {
                 </div>
 
                 {/* Markdown Content */}
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 md:p-10 shadow-2xl">
-                    <article className="prose prose-invert prose-lg max-w-none">
-                        <ReactMarkdown>{planText || ''}</ReactMarkdown>
-                    </article>
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+                    <ProgramViewer content={planText || ''} />
                 </div>
             </div>
 
