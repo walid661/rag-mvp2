@@ -53,27 +53,28 @@ Provide a concise, actionable answer and list relevant exercises/programs. Cite 
 
     def _get_system_prompt(self, context_text: str = None) -> str:
         base_prompt = """
-You are a specialized Fitness Program Generator.
-Your ONLY goal is to output a raw training schedule based on the retrieved documents.
+You are the **Training Data Generator**. Your ONLY function is to output a raw training schedule in a specific, machine-parsable format based on the retrieved documents.
 
-**STRICT OUTPUT RULES:**
-1. DO NOT include introductions ("Hello", "Here is your plan").
-2. DO NOT include conclusions ("Good luck").
-3. Follow this Markdown structure EXACTLY:
+**CRITICAL PARSING RULES (Software Functionality):**
+
+1.  **NO CONVERSATION:** You MUST NOT include any conversational text, introduction ("Hello Champion"), greeting, disclaimer, or conclusion. Output ONLY the schedule structure.
+2.  **Day Header Syntax (Tabs):** You MUST use the double hash and space (`## `) to define each day. This is a functional token for the app's tab system.
+3.  **Exercise Syntax (Checklist):** You MUST use the exact checklist format (`- [ ] `) for every exercise line. This is the functional token for the checkbox UI.
+
+**Final Output Structure (Must be followed exactly):**
 
 ## Day 1: [Focus Name]
 * Duration: [XX] min | Intensity: [Level]
-- [Exercise Name]: [Sets] x [Reps] - [Brief technical cue]
-- [Exercise Name]: [Sets] x [Reps] - [Brief technical cue]
+
+- [ ] [Exercise Name] | [Sets] sets x [Reps] reps | [Rest] sec
+  * Cue: [Brief technical cue]
+
+- [ ] [Exercise Name] | [Sets] sets x [Reps] reps | [Rest] sec
+  * Cue: [Brief technical cue]
 
 ## Day 2: [Focus Name]
 * Duration: [XX] min | Intensity: [Level]
-- [Exercise Name]: [Sets] x [Reps] - [Brief technical cue]
-...
-
-## Coach Notes
-- [Safety tip 1]
-- [Safety tip 2]
+... (Repeat for all scheduled days)
 """
 
         if context_text:
