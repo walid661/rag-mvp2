@@ -24,23 +24,19 @@ export default function ProgramViewer({ content }: ProgramViewerProps) {
     }, [content])
 
     const parseProgramText = (text: string): ParsedSection[] => {
-        // Split by "## Day" or "### Day"
-        // Using lookahead to keep the delimiter in the split array logic
-        // But simpler: split by regex and reconstruct
-
-        // Regex to match the header: (##+ Day \d+.*)
-        // We want to split but keep the header with the content.
-
-        // Strategy:
-        // 1. Split by the header pattern, capturing the header.
-        // 2. Re-assemble.
-
-        const dayRegex = /(#{2,3}\s*Day\s*\d+[^\n]*)/i
-        const parts = text.split(dayRegex)
+        // Regex to match "Day X" headers with or without markdown (##)
+        // We use a regex that looks for the pattern at the start of a line
+        // Regex: ((?:^|\n)(?:#{0,3}\s*)Day\s*\d+[^\n]*)
+        // This captures the entire header line.
+        const splitRegex = /((?:^|\n)(?:#{0,3}\s*)Day\s*\d+[^\n]*)/i
+        const parts = text.split(splitRegex)
 
         const sections: ParsedSection[] = []
 
-        // parts[0] is usually intro/overview (before first day)
+        // parts[0] = Overview (or empty)
+        // parts[1] = Header 1
+        // parts[2] = Content 1
+
         if (parts[0].trim()) {
             sections.push({
                 title: "Overview",
@@ -48,24 +44,26 @@ export default function ProgramViewer({ content }: ProgramViewerProps) {
             })
         }
 
-        // The rest should be [Header, Content, Header, Content...]
         for (let i = 1; i < parts.length; i += 2) {
-            const header = parts[i]
+            const headerLine = parts[i]
             const body = parts[i + 1] || ""
 
-            // Extract "Day X" from header for the tab title
-            const titleMatch = header.match(/Day\s*\d+/i)
-            const title = titleMatch ? titleMatch[0] : "Day ?"
+            // Extract "Day X" for the tab title
+            const dayMatch = headerLine.match(/Day\s*\d+/i)
+            const title = dayMatch ? dayMatch[0] : "Day ?"
+
+            // Clean up the header line (remove leading newlines if split captured them)
+            const cleanHeader = headerLine.replace(/^\n/, '')
 
             sections.push({
                 title: title,
-                content: `${header}\n${body}`.trim()
+                content: `${cleanHeader}${body}`.trim()
             })
         }
 
-        // Fallback: If no split happened (no "Day" headers found), show full text
-        if (sections.length === 0 && content.trim()) {
-            return [{ title: "Full Plan", content: content }]
+        // Fallback
+        if (sections.length === 0 && text.trim()) {
+            return [{ title: "Full Plan", content: text }]
         }
 
         return sections
