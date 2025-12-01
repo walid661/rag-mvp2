@@ -3,9 +3,9 @@
 import { useState, useEffect, use } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MessageCircle, Loader2 } from 'lucide-react'
+import { ArrowLeft, MessageCircle, Loader2, Calendar } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import CoachChatDrawer from '@/components/CoachChatDrawer'
+import MobileChatWidget from '@/components/MobileChatWidget'
 
 export default function ProgramDetailsPage({ params }: { params: Promise<{ id: string }> }) {
     const [program, setProgram] = useState<any>(null)
@@ -25,28 +25,31 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
         if (!resolvedParams) return
 
         const fetchProgram = async () => {
-            const { data: { session } } = await supabase.auth.getSession()
-            if (!session) {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) {
                 router.push('/login')
                 return
             }
 
             try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/programs/${resolvedParams.id}`, {
-                    headers: {
-                        'Authorization': `Bearer ${session.access_token}`
-                    }
-                })
+                const { data, error } = await supabase
+                    .from('saved_programs')
+                    .select('*')
+                    .eq('id', resolvedParams.id)
+                    .eq('user_id', user.id)
+                    .single()
 
-                if (res.ok) {
-                    const data = await res.json()
-                    setProgram(data.data)
-                    setContent(data.content)
-                } else {
-                    router.push('/dashboard')
+                if (error) throw error
+
+                if (data) {
+                    setProgram(data)
+                    // Handle both structure types (old JSON vs new JSONB with text)
+                    const textContent = data.program_data?.text || JSON.stringify(data.program_data, null, 2)
+                    setContent(textContent)
                 }
             } catch (error) {
                 console.error("Failed to fetch program", error)
+                router.push('/dashboard')
             } finally {
                 setLoading(false)
             }
@@ -66,40 +69,41 @@ export default function ProgramDetailsPage({ params }: { params: Promise<{ id: s
     return (
         <div className="min-h-screen bg-black text-white flex flex-col">
             {/* Header */}
-            <div className="p-6 flex justify-between items-center bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10 border-b border-zinc-800">
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={() => router.back()}
-                        className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
-                    >
-                        <ArrowLeft size={24} />
-                    </button>
-                    <div>
-                        <h1 className="text-xl font-bold truncate max-w-[200px] md:max-w-md">{program.title}</h1>
-                        <p className="text-gray-400 text-xs">
-                            {new Date(program.created_at).toLocaleDateString()}
-                        </p>
+            <div className="p-4 flex items-center gap-4 bg-zinc-900/80 backdrop-blur-md sticky top-0 z-10 border-b border-zinc-800">
+                <button
+                    onClick={() => router.back()}
+                    className="p-2 hover:bg-zinc-800 rounded-full transition-colors active:scale-95"
+                >
+                    <ArrowLeft size={24} />
+                </button>
+                <div className="flex-1 min-w-0">
+                    <h1 className="text-lg font-bold truncate">{program.title}</h1>
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <Calendar size={12} />
+                        {new Date(program.created_at).toLocaleDateString()}
                     </div>
                 </div>
-                <button
-                    onClick={() => setChatOpen(true)}
-                    className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg shadow-white/10"
-                >
-                    <MessageCircle size={20} />
-                </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 p-4 md:p-8 max-w-4xl mx-auto w-full">
-                <div className="bg-zinc-900/30 border border-zinc-800 rounded-3xl p-6 md:p-10 shadow-xl">
-                    <article className="prose prose-invert prose-lg max-w-none">
-                        <ReactMarkdown>{content}</ReactMarkdown>
-                    </article>
+            <div className="flex-1 p-4 pb-32 max-w-3xl mx-auto w-full">
+                <div className="prose prose-invert prose-lg max-w-none">
+                    <ReactMarkdown>{content}</ReactMarkdown>
                 </div>
             </div>
 
-            {/* Chat Drawer */}
-            <CoachChatDrawer
+            {/* Floating Action Button (FAB) */}
+            <div className="fixed bottom-6 right-6 z-40">
+                <button
+                    onClick={() => setChatOpen(true)}
+                    className="w-14 h-14 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-2xl hover:bg-blue-500 transition-all active:scale-90 animate-in zoom-in duration-300"
+                >
+                    <MessageCircle size={28} />
+                </button>
+            </div>
+
+            {/* Chat Widget */}
+            <MobileChatWidget
                 isOpen={chatOpen}
                 onClose={() => setChatOpen(false)}
                 contextText={content}
