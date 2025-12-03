@@ -86,7 +86,7 @@ export default function SetupPage() {
             alert('Error saving profile: ' + error.message)
             setLoading(false)
         } else {
-            router.push('/generator')
+            router.push('/dashboard')
         }
     }
 
