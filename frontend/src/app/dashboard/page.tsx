@@ -124,6 +124,11 @@ export default function DashboardPage() {
                                             Active
                                         </span>
                                     )}
+                                    {program.status === 'completed' && (
+                                        <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                                            Completed
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2 text-xs text-gray-500">
                                     <Calendar size={12} />
