@@ -1,161 +1,276 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@/utils/supabase/client'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-    Plus, Calendar, ChevronRight, Loader2, Dumbbell, Trash2
-} from 'lucide-react'
+import { createClient } from '@/utils/supabase/client'
+import { generateProgram } from '@/utils/api'
+import { Loader2, Save, RefreshCw, X, Sparkles, History, User } from 'lucide-react'
+import ProgramViewer from '@/components/ProgramViewer'
 
-export default function DashboardPage() {
-    const [programs, setPrograms] = useState<any[]>([])
-    const [loading, setLoading] = useState(true)
+export default function DashboardHub() {
     const router = useRouter()
-    const supabase = createClient()
 
-    useEffect(() => {
-        const fetchPrograms = async () => {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (!user) {
+    // State for the "Welcome Hub" vs "Generating" vs "Result"
+    const [viewState, setViewState] = useState<'hub' | 'generating' | 'result' | 'error'>('hub')
+
+    const [planText, setPlanText] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
+    const [saving, setSaving] = useState(false)
+
+    // Modal State
+    const [showSaveModal, setShowSaveModal] = useState(false)
+    const [programTitle, setProgramTitle] = useState('')
+
+    const handleGenerate = async () => {
+        setViewState('generating')
+        setError(null)
+
+        try {
+            const supabase = createClient()
+            const { data: { session } } = await supabase.auth.getSession()
+
+            if (!session) {
                 router.push('/login')
                 return
             }
 
-            try {
-                const { data, error } = await supabase
-                    .from('saved_programs')
-                    .select('id, title, created_at, status')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false })
+            // Call the new LLM-based generation endpoint
+            const data = await generateProgram(session.access_token, {})
 
-                if (error) throw error
-
-                setPrograms(data || [])
-            } catch (error) {
-                console.error("Failed to fetch programs", error)
-            } finally {
-                setLoading(false)
+            if (data.plan_text) {
+                setPlanText(data.plan_text)
+                setProgramTitle(`Weekly Plan - ${new Date().toLocaleDateString()}`)
+                setViewState('result')
+            } else {
+                throw new Error("Received empty plan from coach.")
             }
-        }
-
-        fetchPrograms()
-    }, [router])
-
-    const handleDelete = async (e: React.MouseEvent, id: string) => {
-        e.stopPropagation() // Prevent navigation when clicking delete
-
-        if (!window.confirm("Are you sure you want to delete this plan? This action cannot be undone.")) {
-            return
-        }
-
-        // Optimistic update
-        setPrograms(prev => prev.filter(p => p.id !== id))
-
-        try {
-            const { error } = await supabase
-                .from('saved_programs')
-                .delete()
-                .eq('id', id)
-
-            if (error) {
-                throw error
-            }
-        } catch (error) {
-            console.error("Failed to delete program", error)
-            alert("Failed to delete program. Please refresh.")
-            // Revert optimistic update if needed, but for MVP simple alert is okay
+        } catch (err: any) {
+            console.error("Generation error:", err)
+            setError(err.message || "Failed to generate plan.")
+            setViewState('error')
         }
     }
 
-    if (loading) return (
-        <div className="min-h-screen bg-black text-white flex items-center justify-center">
-            <Loader2 className="animate-spin" />
-        </div>
-    )
+    const handleSaveClick = () => {
+        if (!planText) return
+        setShowSaveModal(true)
+    }
 
-    return (
-        <div className="min-h-screen bg-black text-white p-4 pb-24">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-6 mt-2">
-                <div>
-                    <h1 className="text-2xl font-bold">My Programs</h1>
-                    <p className="text-gray-400 text-sm">Your training history</p>
-                </div>
-                <button
-                    onClick={() => router.push('/generator')}
-                    className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors shadow-lg shadow-white/10 active:scale-95"
-                >
-                    <Plus size={24} />
-                </button>
+    const confirmSave = async () => {
+        if (!planText) return
+        setSaving(true)
+        try {
+            const supabase = createClient()
+            const { data: { user } } = await supabase.auth.getUser()
+
+            if (!user) {
+                alert("User not found. Please log in.")
+                return
+            }
+
+            const { error } = await supabase
+                .from('saved_programs')
+                .insert({
+                    user_id: user.id,
+                    title: programTitle || `Weekly Plan - ${new Date().toLocaleDateString()}`,
+                    program_data: { text: planText },
+                    status: 'active'
+                })
+
+            if (error) throw error
+
+            router.push('/my-programs')
+        } catch (err: any) {
+            console.error("Save error:", err)
+            alert(`Failed to save plan: ${err.message || err}`)
+            setSaving(false)
+        }
+    }
+
+    // --- RENDER STATES ---
+
+    if (viewState === 'generating') {
+        return (
+            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
+                <Loader2 className="w-16 h-16 animate-spin text-white mb-6" />
+                <h2 className="text-3xl font-bold mb-2">Coach Mike is thinking...</h2>
+                <p className="text-gray-400 text-center max-w-md text-lg">
+                    Analyzing your profile, checking 100+ training protocols, and building your custom plan.
+                </p>
             </div>
+        )
+    }
 
-            {/* Program List */}
-            <div className="space-y-4">
-                {programs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 bg-zinc-900/30 rounded-3xl border border-zinc-800/50">
-                        <div className="w-16 h-16 bg-zinc-800 rounded-full flex items-center justify-center mb-4 text-gray-500">
-                            <Dumbbell size={32} />
-                        </div>
-                        <h3 className="text-lg font-bold mb-2">No plans yet</h3>
-                        <p className="text-gray-400 text-sm mb-6 text-center max-w-[200px]">
-                            Start your journey by creating your first custom training plan.
-                        </p>
+    if (viewState === 'error') {
+        return (
+            <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4">
+                <div className="bg-red-500/10 border border-red-500/20 p-8 rounded-3xl max-w-md text-center">
+                    <h2 className="text-2xl font-bold text-red-500 mb-4">Generation Failed</h2>
+                    <p className="text-gray-300 mb-8">{error}</p>
+                    <div className="flex gap-4 justify-center">
                         <button
-                            onClick={() => router.push('/generator')}
-                            className="px-8 py-3 bg-white text-black rounded-full font-bold hover:bg-gray-200 transition-colors active:scale-95"
+                            onClick={() => setViewState('hub')}
+                            className="px-6 py-3 rounded-full font-bold text-gray-400 hover:bg-zinc-800 transition-colors"
                         >
-                            Create New Plan
+                            Back to Hub
+                        </button>
+                        <button
+                            onClick={handleGenerate}
+                            className="bg-white text-black px-6 py-3 rounded-full font-bold hover:bg-gray-200 transition-colors flex items-center gap-2"
+                        >
+                            <RefreshCw size={20} /> Try Again
                         </button>
                     </div>
-                ) : (
-                    programs.map((program) => (
-                        <div
-                            key={program.id}
-                            onClick={() => router.push(`/program/${program.id}`)}
-                            className="bg-zinc-900/50 border border-zinc-800 p-5 rounded-3xl flex items-center justify-between active:bg-zinc-800 transition-all cursor-pointer group touch-manipulation relative overflow-hidden"
+                </div>
+            </div>
+        )
+    }
+
+    if (viewState === 'result') {
+        return (
+            <div className="min-h-screen bg-black text-white p-4 md:p-8 relative">
+                <div className="max-w-4xl mx-auto">
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-8">
+                        <button
+                            onClick={() => setViewState('hub')}
+                            className="px-4 py-2 rounded-full hover:bg-zinc-900 text-gray-400 transition-colors"
                         >
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <h3 className="font-bold text-lg text-white group-hover:text-gray-200 transition-colors pr-8">
-                                        {program.title}
-                                    </h3>
-                                    {program.status === 'active' && (
-                                        <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                                            Active
-                                        </span>
-                                    )}
-                                    {program.status === 'completed' && (
-                                        <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                                            Completed
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-gray-500">
-                                    <Calendar size={12} />
-                                    {new Date(program.created_at).toLocaleDateString(undefined, {
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric'
-                                    })}
-                                </div>
+                            Discard
+                        </button>
+                        <h1 className="text-2xl font-bold hidden md:block">Your Custom Plan</h1>
+                        <button
+                            onClick={handleSaveClick}
+                            disabled={saving}
+                            className="bg-white text-black px-6 py-3 rounded-full font-bold hover:bg-gray-200 transition-colors flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-white/10"
+                        >
+                            <Save size={20} />
+                            Save & Start
+                        </button>
+                    </div>
+
+                    {/* Markdown Content */}
+                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+                        <ProgramViewer content={planText || ''} />
+                    </div>
+                </div>
+
+                {/* Save Modal */}
+                {showSaveModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                        <div className="bg-zinc-900 border border-zinc-800 w-full max-w-md rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold">Name your program</h3>
+                                <button
+                                    onClick={() => setShowSaveModal(false)}
+                                    className="p-2 hover:bg-zinc-800 rounded-full transition-colors"
+                                >
+                                    <X size={20} className="text-gray-400" />
+                                </button>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div className="mb-8">
+                                <label className="block text-sm text-gray-400 mb-2">Program Title</label>
+                                <input
+                                    type="text"
+                                    value={programTitle}
+                                    onChange={(e) => setProgramTitle(e.target.value)}
+                                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-white focus:border-transparent outline-none transition-all"
+                                    placeholder="e.g. Summer Shred 2025"
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div className="flex gap-3">
                                 <button
-                                    onClick={(e) => handleDelete(e, program.id)}
-                                    className="w-10 h-10 flex items-center justify-center text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all z-10"
-                                    title="Delete Program"
+                                    onClick={() => setShowSaveModal(false)}
+                                    className="flex-1 py-3 rounded-xl font-bold text-gray-400 hover:bg-zinc-800 transition-colors"
                                 >
-                                    <Trash2 size={18} />
+                                    Cancel
                                 </button>
-                                <div className="w-8 h-8 bg-zinc-800 rounded-full flex items-center justify-center text-gray-400 group-hover:bg-white group-hover:text-black transition-all">
-                                    <ChevronRight size={18} />
-                                </div>
+                                <button
+                                    onClick={confirmSave}
+                                    disabled={saving || !programTitle.trim()}
+                                    className="flex-1 bg-white text-black py-3 rounded-xl font-bold hover:bg-gray-200 transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
+                                >
+                                    {saving && <Loader2 size={18} className="animate-spin" />}
+                                    {saving ? 'Saving...' : 'Confirm Save'}
+                                </button>
                             </div>
                         </div>
-                    ))
+                    </div>
                 )}
             </div>
+        )
+    }
+
+    // --- DEFAULT HUB VIEW ---
+    return (
+        <div className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden">
+
+            {/* Background Elements */}
+            <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+                <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[100px]" />
+                <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[100px]" />
+            </div>
+
+            {/* Navbar */}
+            <nav className="flex justify-between items-center p-6 z-10">
+                <div className="text-xl font-bold tracking-tighter">COACH MIKE</div>
+                <div className="flex gap-4">
+                    <button
+                        onClick={() => router.push('/my-programs')}
+                        className="p-3 rounded-full bg-zinc-900 hover:bg-zinc-800 transition-colors text-gray-400 hover:text-white"
+                        title="My Programs"
+                    >
+                        <History size={20} />
+                    </button>
+                    <button
+                        onClick={() => router.push('/profile')}
+                        className="p-3 rounded-full bg-zinc-900 hover:bg-zinc-800 transition-colors text-gray-400 hover:text-white"
+                        title="Profile"
+                    >
+                        <User size={20} />
+                    </button>
+                </div>
+            </nav>
+
+            {/* Main Content */}
+            <main className="flex-1 flex flex-col items-center justify-center p-6 z-10 text-center">
+                <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <h1 className="text-5xl md:text-7xl font-bold mb-6 tracking-tight">
+                        Ready to <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Build?</span>
+                    </h1>
+                    <p className="text-xl text-gray-400 max-w-lg mx-auto leading-relaxed">
+                        Your AI coach is ready to design your perfect training week based on your latest goals and recovery.
+                    </p>
+                </div>
+
+                <button
+                    onClick={handleGenerate}
+                    className="group relative px-8 py-6 bg-white text-black rounded-full font-bold text-xl md:text-2xl hover:scale-105 transition-all duration-300 shadow-[0_0_40px_-10px_rgba(255,255,255,0.3)] hover:shadow-[0_0_60px_-10px_rgba(255,255,255,0.5)] animate-in fade-in zoom-in duration-500 delay-200"
+                >
+                    <span className="flex items-center gap-3">
+                        <Sparkles className="w-6 h-6 text-purple-600 group-hover:rotate-12 transition-transform" />
+                        Generate My Plan
+                    </span>
+                </button>
+
+                <div className="mt-12 flex gap-8 text-sm text-gray-500 animate-in fade-in duration-1000 delay-500">
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full" />
+                        Science-based
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                        Personalized
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                        Instant
+                    </div>
+                </div>
+            </main>
         </div>
     )
 }
