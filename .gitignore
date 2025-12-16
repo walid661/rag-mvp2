@@ -24,10 +24,11 @@ Thumbs.db
 .env
 .env.local
 
-# Data files (optional - uncomment if you don't want to track data)
-# data/
-# *.db
-# *.sqlite
+# Data files - NOT tracked (too large, rebuild with scripts)
+data/
+*.db
+*.sqlite
+qdrant_storage/
 
 # Logs
 *.log

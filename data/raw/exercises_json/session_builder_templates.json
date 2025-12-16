@@ -1,8 +1,0 @@
-{
-  "id": "ex_session_builder_templates",
-  "text": "```json\n{\n  \"title\": \"Modèles de séances d'entraînement\",\n  \"category\": \"programme\",\n  \"type\": \"autre\",\n  \"level\": \"mixte\",\n  \"text\": \"Ce document présente des modèles pour créer des séances d'entraînement individuelles, en fonction du type de séance et du profil de l'utilisateur. Les différentes sections incluent l'échauffement, le bloc principal et la récupération. Les exercices peuvent être organisés en circuits, en supersets ou en AMRAP, et peuvent cibler différents groupes musculaires tels que la poitrine, le dos, les épaules, les bras, les jambes et les fessiers. Les séances peuvent également varier en intensité, allant du cardio léger à des entraînements HIIT, en passant par des exercices de force, d'hypertrophie et de stabilité. Des éléments de mobilité, d'étirement et de relaxation sont également intégrés pour favoriser la récupération et améliorer la flexibilité.\",\n  \"metadata\": {\n    \"source\": \"C:\\\\Dossier Walid\\\\RAG_train\\\\database_unified\\\\session_planning\\\\session_builder_templates.json\",\n    \"original_language\": \"en\"\n  }\n}\n```",
-  "title": "session_builder_templates",
-  "category": "conseil",
-  "type": "autre",
-  "level": "mixte"
-}
