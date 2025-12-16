@@ -2,13 +2,15 @@ import json
 import os
 import uuid
 import glob
+import argparse  # <--- TASK 5
 from typing import Iterable, Dict, Any
 from dotenv import load_dotenv
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance, VectorParams, PointStruct,
-    OptimizersConfigDiff, ScalarQuantization, ScalarQuantizationConfig
+    OptimizersConfigDiff, ScalarQuantization, ScalarQuantizationConfig,
+    SparseVectorParams  # <--- TASK 2
 )
 from sentence_transformers import SentenceTransformer
 
@@ -76,15 +78,20 @@ def load_json_directory(directory: str) -> Iterable[dict]:
             print(f"   ⚠️ Error reading {os.path.basename(file_path)}")
 
 def recreate_collection(client: QdrantClient):
-    """Resets the collection to fit the new Vector Size (384)."""
+    """Resets the collection to fit the new Vector Size (384) AND Sparse config."""
     if client.collection_exists(COLLECTION_NAME):
         print(f"♻️  Deleting old collection '{COLLECTION_NAME}'...")
         client.delete_collection(COLLECTION_NAME)
     
     print(f"🆕 Creating collection '{COLLECTION_NAME}' (Size: {VECTOR_SIZE})...")
+    
+    # --- TASK 2: CONFIGURATION SPARSE ---
     client.create_collection(
         collection_name=COLLECTION_NAME,
         vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE, on_disk=True),
+        sparse_vectors_config={
+            "sparse": SparseVectorParams()
+        },
         optimizers_config=OptimizersConfigDiff(indexing_threshold=1000),
         quantization_config=ScalarQuantization(
             scalar=ScalarQuantizationConfig(type="int8", quantile=0.99, always_ram=True)
@@ -196,7 +203,22 @@ def process_and_ingest(client: QdrantClient, model: SentenceTransformer):
     print("You can now use the Planner Agent.")
 
 if __name__ == "__main__":
+    # --- TASK 5: LOGIQUE NON-DESTRUCTIVE ---
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", action="store_true", help="Recreate collection (WARNING: deletes all)")
+    args = parser.parse_args()
+
     client = get_qdrant_client()
     model = get_embedding_model()
-    recreate_collection(client)
+    
+    if args.force:
+        print("⚠️  FORCE MODE: Recreating collection...")
+        recreate_collection(client)
+    else:
+        if not client.collection_exists(COLLECTION_NAME):
+            print(f"Collection '{COLLECTION_NAME}' not found, creating...")
+            recreate_collection(client)
+        else:
+            print(f"✅ Collection '{COLLECTION_NAME}' exists. Switching to UPSERT mode (Non-destructive).")
+
     process_and_ingest(client, model)

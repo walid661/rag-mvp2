@@ -1,6 +1,7 @@
 import os
 import sys
 import uvicorn
+import asyncio  # <--- Ajout pour Task 1
 from fastapi import FastAPI, Depends, HTTPException, Body, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -8,15 +9,26 @@ from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# --- SETUP PATHS ---
-# Add root directory to sys.path to import scripts and app modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# --- TASK 6: NETTOYAGE IMPORTS ---
+# Suppression des hacks sys.path.append(...)
+# Le projet doit être lancé via "python -m coach-mike.main_api" depuis la racine
+# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Imports relatifs propres (suppose lancement module)
 from app.services.retriever import HybridRetriever
 from app.services.generator import RAGGenerator
 from app.services.rag_router import build_filters
-from scripts.generate_plan import generate_weekly_plan
 from qdrant_client import QdrantClient
+
+# Note: scripts.generate_plan pourrait nécessiter d'être déplacé dans app/services
+# pour un import propre, ou gardé tel quel si lancé depuis la racine.
+# Pour l'instant on garde l'import mais on s'attend à ce que le PYTHONPATH soit correct.
+try:
+    from scripts.generate_plan import generate_weekly_plan
+except ImportError:
+    # Fallback si scripts n'est pas un package
+    print("⚠️ Warning: scripts.generate_plan not found via module import.")
+    generate_weekly_plan = None
 
 load_dotenv()
 
@@ -171,10 +183,12 @@ async def generate_plan_endpoint(
         retrieval_query = f"{goal} plan for {level} level using {equipment_str}"
         filters = build_filters(stage="auto", profile=profile_data, extra={"query": retrieval_query})
         
-        retrieved_docs = retriever.retrieve(retrieval_query, top_k=5, filters=filters)
+        # --- TASK 1: ASYNC WRAPPER ---
+        # Appel non-bloquant du retriever
+        retrieved_docs = await asyncio.to_thread(retriever.retrieve, retrieval_query, top_k=5, filters=filters)
         
-        # Generate Plan
-        result = generator.generate(prompt, retrieved_docs)
+        # Appel non-bloquant du générateur
+        result = await asyncio.to_thread(generator.generate, prompt, retrieved_docs)
         
         return {"plan_text": result["answer"]}
         
@@ -222,13 +236,15 @@ async def chat_coach_endpoint(
         # We could use user profile to filter, but for now let's keep it broad or use 'auto'
         filters = build_filters(stage="auto", profile={}, extra={"query": query})
         
-        retrieved_docs = retriever.retrieve(query, top_k=5, filters=filters)
+        # --- TASK 1: ASYNC WRAPPER ---
+        retrieved_docs = await asyncio.to_thread(retriever.retrieve, query, top_k=5, filters=filters)
         
         if not retrieved_docs:
             return {"answer": "I couldn't find specific information in my database to answer that. Could you rephrase?", "sources": []}
 
         # 2. Generate Answer
-        result = generator.generate(query, retrieved_docs, context_text=request.context_text)
+        # --- TASK 1: ASYNC WRAPPER ---
+        result = await asyncio.to_thread(generator.generate, query, retrieved_docs, context_text=request.context_text)
         
         return {
             "answer": result["answer"],
